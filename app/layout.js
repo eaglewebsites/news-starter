@@ -1,27 +1,28 @@
+// app/layout.js
 import "./globals.css";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import Providers from "@/components/Providers";
-import Logo from "@/components/Logo";
-
-export const metadata = {
-  title: "Your News Network",
-  description: "Next.js starter with auth, ads, and paywall",
-};
+import TopBanner from "@/components/TopBanner";
+import SiteHeader from "@/components/SiteHeader";
+import { SITES } from "@/lib/sites";
+import { getCurrentSiteKey } from "@/lib/site-detection";
+import { fetchSiteMenu } from "@/lib/menu-api";
 
 export default async function RootLayout({ children }) {
-  const session = await getServerSession(authOptions);
+  const siteKey = await getCurrentSiteKey(); // ← await it now
+  const siteCfg = SITES[siteKey] || SITES.sandhills;
+
+  let menu = { links: [] };
+  try {
+    menu = await fetchSiteMenu(siteKey);
+  } catch (e) {
+    console.error("Failed to load site menu:", e);
+  }
 
   return (
     <html lang="en">
-      <body>
-        <header style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderBottom:'1px solid #eee'}}>
-          <Logo />
-          <div style={{opacity:0.8, fontSize:14}}>
-            {session?.user ? `Welcome, ${session.user.name || session.user.email}` : 'Guest'}
-          </div>
-        </header>
-        <Providers session={session}>{children}</Providers>
+      <body className="antialiased">
+        <TopBanner stations={siteCfg.stations} />
+        <SiteHeader logo={siteCfg.logo} stations={siteCfg.stations} menu={menu} />
+        {children}
       </body>
     </html>
   );

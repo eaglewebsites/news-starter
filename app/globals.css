@@ -1,3 +1,143 @@
+@import "tailwindcss";
+
+/* --- Design tokens from your spec --- */
+@theme {
+  /* Palette */
+  --color-ink: #1E1E1E;
+  --color-white: #FFFFFF;
+  --color-sky: #1E99D0;   /* accent blue + arrows */
+  --color-teal: #00496A;  /* deep blue */
+  --color-navy: #012A3D;  /* darkest blue */
+
+  /* Divider blues (from spec) */
+  --color-divider-more: #004293; /* “More Stories this week” underline */
+  --color-divider-nav: var(--color-navy); /* Quick Links / Local / etc. */
+
+  /* Typography families (use next/font to load) */
+  --font-sans: "Fira Sans", ui-sans-serif, system-ui, Arial, sans-serif;
+  --font-alt: "Source Sans Pro", ui-sans-serif, system-ui, Arial, sans-serif;
+
+  /* Sizes from spec (letter-spacing = 0) */
+  --text-fira-34-700: 34px;
+  --text-fira-32-700: 32px;
+  --text-fira-24-700: 24px;
+  --text-fira-20-700: 20px;
+  --text-fira-16-700: 16px;
+  --text-fira-10-400: 10px;
+  --text-source-36-700: 36px;
+
+  /* Radii / shadows */
+  --radius-2: 0.25rem; /* 4px */
+  --radius-3: 0.375rem; /* 6px */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.05), 0 8px 20px rgba(0,0,0,.04);
+}
+
+/* Base */
+html, body { color: var(--color-ink); background: var(--color-white); font-family: var(--font-sans); }
+a { text-decoration: none; color: inherit; }
+
+/* Section headings with custom 3px underlines */
+.section-underline-more::after {
+  content: "";
+  display: block;
+  margin-top: 6px;
+  height: 3px;
+  width: 140px;            /* adjust as needed */
+  background: var(--color-divider-more);
+}
+.section-underline-nav::after {
+  content: "";
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  width: 180px;            /* “Local” ~20px longer than Quick Links—tune widths per section */
+  background: var(--color-divider-nav);
+}
+
+/* Small chevron/arrow chip (fallback utility if you need it) */
+.arrow-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-sky);
+  font-weight: 700;
+}
+
+/* font-family helper for Source Sans Pro */
+.font-alt { font-family: var(--font-alt); }
+
+/* Optional: exact underline widths per section (tweak to taste) */
+.section-underline-more::after { width: 140px; }
+.section-underline-nav::after  { width: 200px; } /* “Local” can be 220px */
+
+/* --- Section underlines with exact widths --- */
+.section-underline-more::after {         /* "More Stories this week" */
+  width: 140px;                           /* adjust if needed */
+}
+
+.section-underline-quick::after {        /* "Quick Links" */
+  content: "";
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  width: 550px;                          /* exact Figma width */
+  background: var(--color-divider-nav);
+}
+
+.section-underline-local::after,         /* "Local" (+20px vs Quick) */
+.section-underline-regional::after,
+.section-underline-sports::after,
+.section-underline-podcast::after {
+  content: "";
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  width: 595px;                          /* exact Figma width */
+  background: var(--color-divider-nav);
+}
+
+.section-underline-regional::after {     /* "Regional" */
+  content: "";
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  width: 595px;                          /* same as Local */
+  background: var(--color-divider-nav);
+}
+
+.section-underline-sports::after {       /* "Sports" */
+  content: "";
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  width: 595px;                          /* same as Local */
+  background: var(--color-divider-nav);
+}
+
+.section-underline-podcast::after {      /* "Podcast" */
+  content: "";
+  display: block;
+  margin-top: 8px;
+  height: 3px;
+  width: 595px;                          /* same as Local */
+  background: var(--color-divider-nav);
+}
+
+
+/* Colors/heights already set earlier; if you want to be explicit: */
+.section-underline-more::after {
+  height: 3px; background: var(--color-divider-more);
+}
+.section-underline-quick::after,
+.section-underline-local::after,
+.section-underline-regional::after,
+.section-underline-sports::after,
+.section-underline-podcast::after {
+  height: 3px; background: var(--color-divider-nav);
+}
+
+
+
 /* Minimal styles so things don't look broken without Tailwind */
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
@@ -11,3 +151,14 @@ main { padding: 24px; }
 .mt-6 { margin-top: 24px; }
 .text-center { text-align: center; }
 .text-red-600 { color: #dc2626; }
+
+.banner-paid {
+  background: #d1fae5; /* soft green */
+  color: #065f46;      /* dark green text */
+}
+
+.banner-free {
+  background: #fef3c7; /* soft yellow */
+  color: #92400e;      /* brown text */
+}
+
