@@ -30,10 +30,25 @@ export default async function StoryPage({ params }) {
 
   const related = await fetchRelated(article.id).catch(() => []);
 
+  // 🧹 Remove duplicate image from body if it matches featured image
+  let bodyHtml = article.html || article.bodyHtml || article.body || "";
+  const featuredSrc =
+    article.image?.src ||
+    article.featuredImage?.src ||
+    article.image ||
+    "";
+
+  if (featuredSrc) {
+    // remove <img ...src="featuredSrc"...> from HTML body
+    const regex = new RegExp(
+      `<img[^>]*src=["']${featuredSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*>`,
+      "i"
+    );
+    bodyHtml = bodyHtml.replace(regex, "");
+  }
+
   return (
     <div className="bg-white text-black">
-      {/* Header is rendered globally in app/layout.js */}
-
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-8 px-4 md:grid-cols-12">
         {/* Main content */}
         <div className="md:col-span-8">
@@ -44,14 +59,10 @@ export default async function StoryPage({ params }) {
             updatedISO={article.updated}
           />
 
-          {/* ✅ Added spacing below header */}
+          {/* ✅ Add spacing below header */}
           <div className="mt-[20px]">
             <FeaturedMedia
-              src={
-                article.image?.src ||
-                article.featuredImage?.src ||
-                article.image
-              }
+              src={featuredSrc}
               alt={
                 article.image?.alt ||
                 article.featuredImage?.alt ||
@@ -63,7 +74,8 @@ export default async function StoryPage({ params }) {
             />
           </div>
 
-          <ArticleBody html={article.html || article.bodyHtml || article.body} />
+          {/* ✅ Use cleaned-up HTML with duplicate image removed */}
+          <ArticleBody html={bodyHtml} />
 
           <RelatedGrid items={related} />
         </div>
