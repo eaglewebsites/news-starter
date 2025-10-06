@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from "react";
+import { safeHref } from '@/lib/link-helpers'
 import Link from "next/link";
+
 
 function formatDate(input) {
   try {
@@ -73,7 +75,7 @@ export default function ArticleList() {
             key={a.id || a.slug}
             className="group rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md"
           >
-            <Link href={`/articles/${a.slug}`} className="block">
+            <Link href={safeHref(`/articles/${a.slug}`)} className="block">
               <h2 className="text-lg font-semibold leading-snug tracking-tight group-hover:underline">
                 {a.title}
               </h2>

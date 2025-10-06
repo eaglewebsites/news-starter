@@ -1,144 +1,94 @@
 // app/posts/[id]/page.js
-import { notFound } from 'next/navigation'
-import { fetchArticleById } from '@/lib/api/articles'
-import { formatInTimeZone } from '@/lib/datetime'
-import Byline from '@/components/Byline'
-import ArticleBody from '@/components/ArticleBody'
-import ShareButtons from '@/components/ShareButtons'
-import AdSlot from '@/components/AdSlot'
+import { notFound } from "next/navigation";
+import ArticleHeader from "@/components/ArticleHeader";
+import FeaturedMedia from "@/components/FeaturedMedia";
+import ArticleBody from "@/components/ArticleBody";
+import RelatedGrid from "@/components/RelatedGrid";
+import { fetchArticleById, fetchRelated } from "@/lib/api/articles";
 
-export const dynamic = 'force-dynamic' // ensures no caching
-
-export async function generateMetadata({ params }) {
-  // In newer Next.js, params is async
-  const { id } = await params
-  try {
-    const article = await fetchArticleById(id)
-    const title = article?.title || 'Story'
-    const description = article?.dek || ''
-    const images = article?.image ? [{ url: article.image, alt: article.imageAlt || title }] : []
-    return {
-      title,
-      description,
-      alternates: { canonical: article?.canonical || undefined },
-      openGraph: { title, description, images, type: 'article' },
-      twitter: { card: images.length ? 'summary_large_image' : 'summary', title, description, images },
-    }
-  } catch {
-    return { title: 'Story', description: '' }
-  }
-}
+export const dynamic = "force-dynamic";
 
 export default async function StoryPage({ params }) {
-  // In newer Next.js, params is async
-  const { id } = await params
+  const { id } = await params;
 
-  let article
+  let article;
   try {
-    article = await fetchArticleById(id)
+    article = await fetchArticleById(id);
   } catch {
-    notFound() // call (do not return) in App Router
+    return notFound();
   }
+  if (!article) return notFound();
 
-  // Human-readable label for users
-  const updatedLabel = article?.updated
-    ? formatInTimeZone(article.updated, 'America/Chicago', 'MMMM d, yyyy • h:mm a z')
-    : null
+  const breadcrumb = article.section
+    ? [
+        {
+          label: article.section.name || article.section,
+          href: `/section/${article.section.slug || article.section}`,
+        },
+      ]
+    : [];
 
-  // ISO for <time dateTime="..."> (only if valid)
-  let updatedISO
-  if (article?.updated) {
-    const d = new Date(article.updated)
-    if (!Number.isNaN(d.getTime())) updatedISO = d.toISOString()
-  }
+  const related = await fetchRelated(article.id).catch(() => []);
 
   return (
-    <article className="mx-auto max-w-screen-xl px-4 pb-10 sm:pb-12 md:pb-16">
-      {/* Top Ad */}
-      <div className="mb-6">
-        <AdSlot placement="top-banner" />
-      </div>
+    <div className="bg-white text-black">
+      {/* Header is rendered globally in app/layout.js */}
 
-      {/* Headline */}
-      <h1 className="font-sans text-3xl leading-tight font-semibold text-slate-900 md:text-4xl">
-        {article.title}
-      </h1>
-
-      {/* Dek / subhead */}
-      {article.dek && <p className="mt-2 text-lg text-slate-700">{article.dek}</p>}
-
-      {/* Byline & Meta */}
-      <Byline author={article.author} updatedISO={updatedISO} updatedLabel={updatedLabel} />
-
-      {/* Hero Image */}
-      {article.image && (
-        <figure className="mt-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={article.image}
-            alt={article.imageAlt || article.title}
-            className="w-full rounded-2xl object-cover"
+      <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-8 px-4 md:grid-cols-12">
+        {/* Main content */}
+        <div className="md:col-span-8">
+          <ArticleHeader
+            breadcrumb={breadcrumb}
+            title={article.title}
+            postedISO={article.published}
+            updatedISO={article.updated}
           />
-          {article.imageCaption && (
-            <figcaption className="mt-2 text-sm text-slate-500">{article.imageCaption}</figcaption>
-          )}
-        </figure>
-      )}
 
-      {/* Share */}
-      <div className="mt-6">
-        <ShareButtons title={article.title} />
-      </div>
-
-      {/* Body + Right Rail */}
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12">
-        <div className="lg:col-span-8">
-          <ArticleBody html={article.body} />
-          <div className="my-8">
-            <AdSlot placement="in-article" />
+          {/* ✅ Added spacing below header */}
+          <div className="mt-[20px]">
+            <FeaturedMedia
+              src={
+                article.image?.src ||
+                article.featuredImage?.src ||
+                article.image
+              }
+              alt={
+                article.image?.alt ||
+                article.featuredImage?.alt ||
+                article.title
+              }
+              photoFrom={
+                article.image?.credit || article.featuredImage?.credit
+              }
+            />
           </div>
-          {article.tags?.length > 0 && (
-            <ul className="mt-6 flex flex-wrap gap-2">
-              {article.tags.map((tag) => (
-                <li key={String(tag)} className="text-sm text-slate-600">
-                  <a href={`/tags/${encodeURIComponent(tag)}`} className="underline hover:no-underline">
-                    #{tag}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
+
+          <ArticleBody html={article.html || article.bodyHtml || article.body} />
+
+          <RelatedGrid items={related} />
         </div>
 
-        <aside className="lg:col-span-4">
-          <div className="sticky top-24 space-y-6">
-            <AdSlot placement="right-rail-top" />
-            {article.related?.length > 0 && (
-              <div>
-                <h2 className="mb-3 border-b border-slate-200 pb-2 text-lg font-semibold">Related</h2>
-                <ul className="space-y-4">
-                  {article.related.map((r) => (
-                    <li key={String(r.id)}>
-                      <a href={r.href} className="group block">
-                        <div className="flex gap-3">
-                          {r.image && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={r.image} alt="" className="h-16 w-24 rounded object-cover" />
-                          )}
-                          <span className="text-sm leading-snug text-slate-800 group-hover:underline">
-                            {r.title}
-                          </span>
-                        </div>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
+        {/* Right rail (weather + ads) */}
+        <aside className="md:col-span-4">
+          <div className="sticky top-6 space-y-4">
+            <div className="rounded-[6px] border border-black/10 bg-[#F4F5F6] p-4">
+              <div className="mb-2 font-bold">Weather</div>
+              <div className="text-[14px]">
+                Forecast: {new Date().toLocaleDateString()}
               </div>
-            )}
-            <AdSlot placement="right-rail-bottom" />
+            </div>
+
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex h-[150px] items-center justify-center rounded-[6px] bg-[#D9D9D9] text-[14px] text-black/70"
+              >
+                AD HERE
+              </div>
+            ))}
           </div>
         </aside>
       </div>
-    </article>
-  )
+    </div>
+  );
 }

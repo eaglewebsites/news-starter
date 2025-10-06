@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import ArrowBlue from "./ArrowBlue";
 
 // components/MoreStories.js

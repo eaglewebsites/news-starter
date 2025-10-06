@@ -3,10 +3,14 @@ module.exports = {
   content: [
     "./app/**/*.{js,jsx}",
     "./components/**/*.{js,jsx}",
-    "./pages/**/*.{js,jsx}"
+    "./pages/**/*.{js,jsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      fontFamily: {
+        sans: ["Fira Sans", "sans-serif"],
+      },
+    },
   },
   plugins: [],
 };

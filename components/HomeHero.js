@@ -1,5 +1,6 @@
 // components/HomeHero.js
 import Image from "next/image";
+import { safeHref } from '@/lib/link-helpers'
 import Link from "next/link";
 
 export default function HomeHero({ story }) {
@@ -46,7 +47,7 @@ export default function HomeHero({ story }) {
       </div>
 
       <div className="absolute bottom-0 left-0 w-full p-4 sm:p-6">
-        <Link href={href} className="pointer-events-auto block hover:underline">
+        <Link href={safeHref(href)} className="pointer-events-auto block hover:underline">
   <h1 className="font-sourcesans font-bold text-[24px] sm:text-[28px] md:text-[32px] leading-tight drop-shadow text-white">
     {story.title}
   </h1>

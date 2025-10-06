@@ -1,4 +1,5 @@
 // components/TopBanner.js
+import { safeHref } from '@/lib/link-helpers'
 import Link from "next/link";
 
 export default function TopBanner({ stations = [] }) {
@@ -19,27 +20,28 @@ export default function TopBanner({ stations = [] }) {
         <nav className="relative -mx-1 flex min-w-0 items-center gap-3 overflow-x-auto px-1">
             {stations.map((st) => (
             <Link
-                key={st.name}
-                href={st.href}
-                className="inline-flex items-center"
-                title={st.name}
+              key={st.name}
+              href={safeHref(st.href)}
+              className="inline-flex items-center"
+              title={st.name}
             >
-                {st.logo ? (
+              {st.logo ? (
                 <>
-                    <img
+                  <img
                     src={st.logo}
                     alt={st.alt || st.name}
                     className="h-7 w-auto md:h-8"
                     loading="lazy"
-                    />
-                    <span className="sr-only">{st.name}</span>
+                  />
+                  <span className="sr-only">{st.name}</span>
                 </>
-                ) : (
+              ) : (
                 <span className="whitespace-nowrap text-sm hover:underline">
-                    {st.name}
+                  {st.name}
                 </span>
-                )}
+              )}
             </Link>
+
             ))}
         </nav>
         </div>
