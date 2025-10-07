@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import ArticleHeader from "@/components/ArticleHeader";
 import FeaturedMedia from "@/components/FeaturedMedia";
 import ArticleBody from "@/components/ArticleBody";
-import RelatedGrid from "@/components/RelatedGrid";
+//import RelatedGrid from "@/components/RelatedGrid";
 import { fetchArticleById, fetchRelated } from "@/lib/api/articles";
 
 export const dynamic = "force-dynamic";
@@ -22,33 +22,69 @@ export default async function StoryPage({ params }) {
   const breadcrumb = article.section
     ? [
         {
-          label: article.section.name || article.section,
-          href: `/section/${article.section.slug || article.section}`,
+          label: article.section?.name || article.section,
+          href: `/section/${article.section?.slug || article.section}`,
         },
       ]
     : [];
 
   const related = await fetchRelated(article.id).catch(() => []);
 
-  // 🧹 Remove duplicate image from body if it matches featured image
-  let bodyHtml = article.html || article.bodyHtml || article.body || "";
+  // Featured image URL for the header block
   const featuredSrc =
     article.image?.src ||
     article.featuredImage?.src ||
     article.image ||
     "";
 
-  if (featuredSrc) {
-    // remove <img ...src="featuredSrc"...> from HTML body
-    const regex = new RegExp(
-      `<img[^>]*src=["']${featuredSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["'][^>]*>`,
-      "i"
-    );
-    bodyHtml = bodyHtml.replace(regex, "");
+  // Source body HTML
+  let bodyHtml = article.html || article.bodyHtml || article.body || "";
+
+  // --- helpers ---
+  const decodeEntities = (s) =>
+    (s || "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+
+  // 1) Extract first <figcaption>...</figcaption> from the body (as plain text)
+  let captionFromBody = null;
+  {
+    const figcapRe = /<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i;
+    const m = bodyHtml.match(figcapRe);
+    if (m && m[1]) {
+      captionFromBody = decodeEntities(m[1].replace(/<[^>]+>/g, "").trim());
+    }
   }
+
+  // 2) Remove the first <figure>...</figure> block from the body (so we don't duplicate the hero image/caption)
+  {
+    const firstFigureRe = /<figure[^>]*>[\s\S]*?<\/figure>/i;
+    bodyHtml = bodyHtml.replace(firstFigureRe, "");
+  }
+
+  // 3) Map caption/credit fields as backups if body had no caption
+  const mappedCaption =
+    captionFromBody ||
+    article.image?.caption ||
+    article.featuredImage?.caption ||
+    article.imageCaption ||
+    article.caption ||
+    null;
+
+  const mappedCredit =
+    article.image?.credit ||
+    article.featuredImage?.credit ||
+    article.photoCredit ||
+    article.credit ||
+    null;
 
   return (
     <div className="bg-white text-black">
+      {/* Header is rendered globally in app/layout.js */}
       <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-8 px-4 md:grid-cols-12">
         {/* Main content */}
         <div className="md:col-span-8">
@@ -59,7 +95,7 @@ export default async function StoryPage({ params }) {
             updatedISO={article.updated}
           />
 
-          {/* ✅ Add spacing below header */}
+          {/* Space between meta and image */}
           <div className="mt-[20px]">
             <FeaturedMedia
               src={featuredSrc}
@@ -68,16 +104,17 @@ export default async function StoryPage({ params }) {
                 article.featuredImage?.alt ||
                 article.title
               }
-              photoFrom={
-                article.image?.credit || article.featuredImage?.credit
-              }
+              caption={mappedCaption}       // ← shows extracted figcaption text
+              photoFrom={mappedCredit}      // ← still supports your "Photo from:" behavior
             />
           </div>
 
-          {/* ✅ Use cleaned-up HTML with duplicate image removed */}
-          <ArticleBody html={bodyHtml} />
+          {/* Body with the first figure removed */}
+          <div className="pb-[100px]">
+            <ArticleBody html={bodyHtml} />
+          </div>
 
-          <RelatedGrid items={related} />
+          {/* <RelatedGrid items={related} /> */}
         </div>
 
         {/* Right rail (weather + ads) */}
