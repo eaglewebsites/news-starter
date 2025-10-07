@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { safeHref, keyOf } from "@/lib/link-helpers";
+import WeatherBlip from "@/components/WeatherBlip";
 
 export default function SiteHeader({ logo, stations = [], menu }) {
   const [open, setOpen] = useState(false);
@@ -27,8 +28,8 @@ export default function SiteHeader({ logo, stations = [], menu }) {
   return (
     <div className="w-full bg-[#012A3D] text-white overflow-visible">
       <div className="mx-auto max-w-[1300px] px-4 overflow-visible">
-        <div className="flex items-center justify-between gap-4 py-8 lg:py-10">
-          {/* Logo */}
+        <div className="flex items-center justify-between gap-3 py-8 lg:py-10">
+          {/* Left: Logo */}
           <Link href="/" className="flex items-center gap-2">
             <img
               src={logo || "/logos/sandhillspost.svg"}
@@ -37,10 +38,11 @@ export default function SiteHeader({ logo, stations = [], menu }) {
             />
           </Link>
 
-          {/* Desktop nav with dropdowns */}
+          {/* Center: Desktop nav with dropdowns */}
           <nav className="relative z-[60] hidden items-center gap-2 overflow-visible lg:flex">
             {links.map((item, idx) => {
-              const hasSub = Array.isArray(item.sublinks) && item.sublinks.length > 0;
+              const hasSub =
+                Array.isArray(item.sublinks) && item.sublinks.length > 0;
               return (
                 <div key={keyOf(item, idx)} className="relative group">
                   <Anchor
@@ -52,8 +54,9 @@ export default function SiteHeader({ logo, stations = [], menu }) {
                     <div
                       className="
                         absolute left-0 top-full z-[100] min-w-[240px]
-                        translate-y-2 bg-[#012A3D] text-white shadow-xl
-                        opacity-0 pointer-events-none transition-all duration-150
+                        translate-y-3 bg-[#012A3D] text-white shadow-xl
+                        opacity-0 pointer-events-none
+                        transition-all duration-300 ease-in-out
                         group-hover:opacity-100 group-hover:translate-y-1 group-hover:pointer-events-auto
                       "
                     >
@@ -75,7 +78,11 @@ export default function SiteHeader({ logo, stations = [], menu }) {
                             {sub.title}
                           </Link>
                         );
-                        return <div key={`${item.title}-${sub.title}-${si}`}>{content}</div>;
+                        return (
+                          <div key={`${item.title}-${sub.title}-${si}`}>
+                            {content}
+                          </div>
+                        );
                       })}
                     </div>
                   )}
@@ -84,80 +91,220 @@ export default function SiteHeader({ logo, stations = [], menu }) {
             })}
           </nav>
 
-          {/* Mobile menu button */}
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-white/10 lg:hidden"
-            aria-label="Open menu"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
-                 fill="currentColor" className="h-6 w-6">
-              <path d="M3 6h18M3 12h18M3 18h18"/>
-            </svg>
-          </button>
-        </div>
+          {/* Right: Desktop Actions (Search + Weather) */}
+          <div className="hidden items-center gap-3 lg:flex">
+            {/* Search icon (white) */}
+            <Link
+              href="/search"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-white/10"
+              aria-label="Search"
+              title="Search"
+            >
+              {/* Magnifying glass, white stroke */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+              </svg>
+            </Link>
 
-        {/* Mobile panel (nested) */}
-        {open && (
-          <div className="pb-4 lg:hidden">
-            <nav className="grid gap-1">
-              {links.map((item) => {
-                const hasSub = Array.isArray(item.sublinks) && item.sublinks.length > 0;
-                return (
-                  <div key={item.title} className="rounded-md">
-                    {item.external ? (
-                      <a
-                        href={item.link}
-                        target={item.target || "_self"}
-                        rel="noreferrer"
-                        className="block px-3 py-2 text-sm font-semibold hover:bg-white/10"
-                      >
-                        {item.title}
-                      </a>
-                    ) : (
-                      <Link
-                        href={safeHref(item.link)}
-                        className="block px-3 py-2 text-sm font-semibold hover:bg-white/10"
-                        onClick={() => setOpen(false)}
-                      >
-                        {item.title}
-                      </Link>
-                    )}
-
-                    {hasSub && (
-                      <div className="ml-3 border-l border-white/10 pl-3">
-                        {item.sublinks.map((sub) =>
-                          sub.external ? (
-                            <a
-                              key={sub.title}
-                              href={sub.link}
-                              target={sub.target || "_self"}
-                              rel="noreferrer"
-                              className="block px-3 py-2 text-sm hover:bg-white/10"
-                            >
-                              {sub.title}
-                            </a>
-                          ) : (
-                            <Link
-                              key={sub.title}
-                              href={safeHref(sub.link)}
-                              className="block px-3 py-2 text-sm hover:bg-white/10"
-                              onClick={() => setOpen(false)}
-                            >
-                              {sub.title}
-                            </Link>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </nav>
+            {/* Live weather (desktop) */}
+            <WeatherBlip />
           </div>
-        )}
+
+          {/* Mobile: Weather + Hamburger row (WeatherBlip shows compact next to the button) */}
+          <div className="flex items-center gap-2 lg:hidden">
+            {/* Compact Weather on mobile header (hidden until ready; component returns null until ready) */}
+            <WeatherBlip className="rounded-md text-xs px-2 py-1 hidden sm:inline-flex" />
+
+            {/* Mobile menu button (hamburger / X) */}
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open ? "true" : "false"}
+              aria-controls="mobile-menu"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-white/10"
+              aria-label={open ? "Close menu" : "Open menu"}
+            >
+              {open ? (
+                // X icon (white)
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 6l12 12M18 6l-12 12"
+                  />
+                </svg>
+              ) : (
+                // Hamburger (white)
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* ===== Mobile overlay & panel (always mounted for smooth fade-out) ===== */}
+      {/* Backdrop */}
+      <div
+        className={[
+          "fixed inset-0 z-[70] bg-black/40 transition-opacity duration-300 lg:hidden",
+          open
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none",
+        ].join(" ")}
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Sliding panel */}
+      <div
+        id="mobile-menu"
+        className={[
+          "fixed left-0 right-0 top-0 z-[75] mx-auto w-full max-w-[1300px] px-4",
+          "transition-all duration-300 ease-in-out lg:hidden",
+          open
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 -translate-y-3 pointer-events-none",
+        ].join(" ")}
+      >
+        <div className="mt-20 rounded-md bg-[#012A3D] p-3 shadow-xl ring-1 ring-white/10">
+          {/* Header row inside panel with close button */}
+          <div className="mb-2 flex items-center justify-between px-1">
+            <span className="text-sm font-semibold uppercase tracking-wide">
+              Menu
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-white/10"
+              aria-label="Close menu"
+            >
+              {/* X icon (white) */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M6 6l12 12M18 6l-12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {/* Mobile quick actions row: Search + Weather */}
+          <div className="mb-2 flex items-center gap-2 px-1">
+            <Link
+              href="/search"
+              className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/15"
+              onClick={() => setOpen(false)}
+              aria-label="Search"
+            >
+              {/* Magnifying glass */}
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
+              </svg>
+              <span>Search</span>
+            </Link>
+
+            {/* Live weather (mobile panel) */}
+            <WeatherBlip className="rounded-md" />
+          </div>
+
+          <nav className="grid gap-1">
+            {links.map((item) => {
+              const hasSub =
+                Array.isArray(item.sublinks) && item.sublinks.length > 0;
+              return (
+                <div key={item.title}>
+                  {item.external ? (
+                    <a
+                      href={item.link}
+                      target={item.target || "_self"}
+                      rel="noreferrer"
+                      className="block px-3 py-2 text-sm font-semibold hover:bg-white/10"
+                    >
+                      {item.title}
+                    </a>
+                  ) : (
+                    <Link
+                      href={safeHref(item.link)}
+                      className="block px-3 py-2 text-sm font-semibold hover:bg-white/10"
+                      onClick={() => setOpen(false)}
+                    >
+                      {item.title}
+                    </Link>
+                  )}
+
+                  {hasSub && (
+                    <div className="ml-3 border-l border-white/10 pl-3">
+                      {item.sublinks.map((sub) =>
+                        sub.external ? (
+                          <a
+                            key={sub.title}
+                            href={sub.link}
+                            target={sub.target || "_self"}
+                            rel="noreferrer"
+                            className="block px-3 py-2 text-sm hover:bg-white/10"
+                          >
+                            {sub.title}
+                          </a>
+                        ) : (
+                          <Link
+                            key={sub.title}
+                            href={safeHref(sub.link)}
+                            className="block px-3 py-2 text-sm hover:bg-white/10"
+                            onClick={() => setOpen(false)}
+                          >
+                            {sub.title}
+                          </Link>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+      {/* ===== /Mobile overlay & panel ===== */}
     </div>
   );
 }
