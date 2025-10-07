@@ -18,31 +18,56 @@ export default function TopBanner({ stations = [] }) {
 
         {/* Station logos (horizontal scroll on small screens) */}
         <nav className="relative -mx-1 flex min-w-0 items-center gap-3 overflow-x-auto px-1">
-            {stations.map((st) => (
-            <Link
-              key={st.name}
-              href={safeHref(st.href)}
-              className="inline-flex items-center"
-              title={st.name}
-            >
-              {st.logo ? (
-                <>
-                  <img
-                    src={st.logo}
-                    alt={st.alt || st.name}
-                    className="h-7 w-auto md:h-8"
-                    loading="lazy"
-                  />
-                  <span className="sr-only">{st.name}</span>
-                </>
-              ) : (
-                <span className="whitespace-nowrap text-sm hover:underline">
-                  {st.name}
-                </span>
-              )}
-            </Link>
+            {stations.map((st) => {
+            const href = safeHref(st.href);
+            const isExternal = /^https?:\/\//i.test(href);
 
-            ))}
+            // Shared link content (logo or text)
+            const linkContent = st.logo ? (
+              <>
+                <img
+                  src={st.logo}
+                  alt={st.alt || st.name}
+                  className="h-7 w-auto md:h-8"
+                  loading="lazy"
+                />
+                <span className="sr-only">{st.name}</span>
+              </>
+            ) : (
+              <span className="whitespace-nowrap text-sm hover:underline">
+                {st.name}
+              </span>
+            );
+
+            // External links → open in new tab with <a>
+            if (isExternal) {
+              return (
+                <a
+                  key={st.name}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center"
+                  title={st.name}
+                >
+                  {linkContent}
+                </a>
+              );
+            }
+
+            // Internal links → use Next.js <Link>
+            return (
+              <Link
+                key={st.name}
+                href={href}
+                className="inline-flex items-center"
+                title={st.name}
+              >
+                {linkContent}
+              </Link>
+            );
+          })}
+
         </nav>
         </div>
 
