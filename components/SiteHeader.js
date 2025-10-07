@@ -27,10 +27,15 @@ export default function SiteHeader({ logo, stations = [], menu }) {
 
   return (
     <div className="w-full bg-[#012A3D] text-white overflow-visible">
+      {/* Weather strip on its own line */}
+      <div className="border-b border-white/10 bg-[#012A3D]/90 py-2 text-center">
+        <WeatherBlip className="mx-auto" />
+      </div>
+
       <div className="mx-auto max-w-[1300px] px-4 overflow-visible">
-        <div className="flex items-center justify-between gap-3 py-8 lg:py-10">
-          {/* Left: Logo */}
-          <Link href="/" className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 py-8 lg:py-10">
+          {/* Left: Logo (never shrink) */}
+          <Link href="/" className="flex shrink-0 items-center gap-2">
             <img
               src={logo || "/logos/sandhillspost.svg"}
               alt="Site Logo"
@@ -38,62 +43,63 @@ export default function SiteHeader({ logo, stations = [], menu }) {
             />
           </Link>
 
-          {/* Center: Desktop nav with dropdowns */}
-          <nav className="relative z-[60] hidden items-center gap-2 overflow-visible lg:flex">
-            {links.map((item, idx) => {
-              const hasSub =
-                Array.isArray(item.sublinks) && item.sublinks.length > 0;
-              return (
-                <div key={keyOf(item, idx)} className="relative group">
-                  <Anchor
-                    item={item}
-                    className="px-3 py-2 text-sm uppercase font-semibold hover:underline whitespace-nowrap inline-flex items-center gap-1"
-                  />
+          {/* Center: Desktop nav (flexible) */}
+          <div className="hidden min-w-0 flex-1 justify-center lg:flex">
+            <nav className="relative z-[60] flex items-center gap-2 overflow-visible">
+              {links.map((item, idx) => {
+                const hasSub =
+                  Array.isArray(item.sublinks) && item.sublinks.length > 0;
+                return (
+                  <div key={keyOf(item, idx)} className="relative group">
+                    <Anchor
+                      item={item}
+                      className="px-3 py-2 text-sm uppercase font-semibold hover:underline whitespace-nowrap inline-flex items-center gap-1"
+                    />
 
-                  {hasSub && (
-                    <div
-                      className="
-                        absolute left-0 top-full z-[100] min-w-[240px]
-                        translate-y-3 bg-[#012A3D] text-white shadow-xl
-                        opacity-0 pointer-events-none
-                        transition-all duration-300 ease-in-out
-                        group-hover:opacity-100 group-hover:translate-y-1 group-hover:pointer-events-auto
-                      "
-                    >
-                      {item.sublinks.map((sub, si) => {
-                        const content = sub.external ? (
-                          <a
-                            href={sub.link}
-                            target={sub.target || "_self"}
-                            rel="noreferrer"
-                            className="block px-3 py-2 text-sm font-semibold hover:bg-white/20 transition-colors"
-                          >
-                            {sub.title}
-                          </a>
-                        ) : (
-                          <Link
-                            href={safeHref(sub.link)}
-                            className="block px-3 py-2 text-sm font-semibold hover:bg-white/20 transition-colors"
-                          >
-                            {sub.title}
-                          </Link>
-                        );
-                        return (
-                          <div key={`${item.title}-${sub.title}-${si}`}>
-                            {content}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
+                    {hasSub && (
+                      <div
+                        className="
+                          absolute left-0 top-full z-[100] min-w-[240px]
+                          translate-y-3 bg-[#012A3D] text-white shadow-xl
+                          opacity-0 pointer-events-none
+                          transition-all duration-300 ease-in-out
+                          group-hover:opacity-100 group-hover:translate-y-1 group-hover:pointer-events-auto
+                        "
+                      >
+                        {item.sublinks.map((sub, si) => {
+                          const content = sub.external ? (
+                            <a
+                              href={sub.link}
+                              target={sub.target || "_self"}
+                              rel="noreferrer"
+                              className="block px-3 py-2 text-sm font-semibold hover:bg-white/20 transition-colors"
+                            >
+                              {sub.title}
+                            </a>
+                          ) : (
+                            <Link
+                              href={safeHref(sub.link)}
+                              className="block px-3 py-2 text-sm font-semibold hover:bg-white/20 transition-colors"
+                            >
+                              {sub.title}
+                            </Link>
+                          );
+                          return (
+                            <div key={`${item.title}-${sub.title}-${si}`}>
+                              {content}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </div>
 
-          {/* Right: Desktop Actions (Search + Weather) */}
-          <div className="hidden items-center gap-3 lg:flex">
-            {/* Search icon (white) */}
+          {/* Right: Desktop Search icon */}
+          <div className="hidden shrink-0 items-center gap-3 lg:flex">
             <Link
               href="/search"
               className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-white/10"
@@ -113,17 +119,10 @@ export default function SiteHeader({ logo, stations = [], menu }) {
                 <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
               </svg>
             </Link>
-
-            {/* Live weather (desktop) */}
-            <WeatherBlip />
           </div>
 
-          {/* Mobile: Weather + Hamburger row (WeatherBlip shows compact next to the button) */}
+          {/* Mobile: Hamburger menu only */}
           <div className="flex items-center gap-2 lg:hidden">
-            {/* Compact Weather on mobile header (hidden until ready; component returns null until ready) */}
-            <WeatherBlip className="rounded-md text-xs px-2 py-1 hidden sm:inline-flex" />
-
-            {/* Mobile menu button (hamburger / X) */}
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
@@ -166,8 +165,7 @@ export default function SiteHeader({ logo, stations = [], menu }) {
         </div>
       </div>
 
-      {/* ===== Mobile overlay & panel (always mounted for smooth fade-out) ===== */}
-      {/* Backdrop */}
+      {/* ===== Mobile overlay & panel ===== */}
       <div
         className={[
           "fixed inset-0 z-[70] bg-black/40 transition-opacity duration-300 lg:hidden",
@@ -220,7 +218,7 @@ export default function SiteHeader({ logo, stations = [], menu }) {
             </button>
           </div>
 
-          {/* Mobile quick actions row: Search + Weather */}
+          {/* Mobile quick actions row */}
           <div className="mb-2 flex items-center gap-2 px-1">
             <Link
               href="/search"
@@ -228,7 +226,6 @@ export default function SiteHeader({ logo, stations = [], menu }) {
               onClick={() => setOpen(false)}
               aria-label="Search"
             >
-              {/* Magnifying glass */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
@@ -242,9 +239,6 @@ export default function SiteHeader({ logo, stations = [], menu }) {
               </svg>
               <span>Search</span>
             </Link>
-
-            {/* Live weather (mobile panel) */}
-            <WeatherBlip className="rounded-md" />
           </div>
 
           <nav className="grid gap-1">
@@ -304,7 +298,6 @@ export default function SiteHeader({ logo, stations = [], menu }) {
           </nav>
         </div>
       </div>
-      {/* ===== /Mobile overlay & panel ===== */}
     </div>
   );
 }

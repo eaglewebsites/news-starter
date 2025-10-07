@@ -5,13 +5,9 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 /**
- * A small weather pill that:
- * - asks for location permission (browser geolocation)
- * - fetches current temperature from Open-Meteo (°F)
- * - reverse-geocodes to a readable place label (Nominatim), if possible
- * - falls back gracefully (hides if denied/unavailable)
- *
- * Renders nothing until it has something meaningful to show.
+ * Weather pill with reserved space to prevent layout shift.
+ * - Shows a subtle placeholder pill until ready (prevents header jump)
+ * - Geolocates, fetches Open-Meteo temp (°F), optional reverse geocode label
  */
 export default function WeatherBlip({ href = "/weather", className = "" }) {
   const [tempF, setTempF] = useState(null);
@@ -24,21 +20,14 @@ export default function WeatherBlip({ href = "/weather", className = "" }) {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    // helper: reverse geocode -> human label (optional)
     async function reverseGeocode(lat, lon) {
       try {
         const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
           lat
         )}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
-        const res = await fetch(url, {
-          signal: ac.signal,
-          headers: {
-            // Nominatim appreciates a descriptive UA; browsers set one automatically, this is just polite.
-          },
-        });
+        const res = await fetch(url, { signal: ac.signal });
         if (!res.ok) return null;
         const data = await res.json();
-        // Choose a decent label: city/town/village -> state/region
         const a = data.address || {};
         const city =
           a.city ||
@@ -58,7 +47,6 @@ export default function WeatherBlip({ href = "/weather", className = "" }) {
       }
     }
 
-    // helper: fetch current temp in °F
     async function fetchTemp(lat, lon) {
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(
         lat
@@ -79,29 +67,24 @@ export default function WeatherBlip({ href = "/weather", className = "" }) {
         setReady(true);
         return;
       }
-
       Promise.allSettled([fetchTemp(latitude, longitude), reverseGeocode(latitude, longitude)])
         .then(([tRes, gRes]) => {
           if (!mounted) return;
           if (tRes.status === "fulfilled") setTempF(Math.round(tRes.value));
           if (gRes.status === "fulfilled" && gRes.value) setLabel(gRes.value);
         })
-        .finally(() => {
-          if (mounted) setReady(true);
-        });
+        .finally(() => mounted && setReady(true));
     }
 
     function onGeoError() {
-      // If denied/unavailable, just mark ready without data (component renders nothing)
       setReady(true);
     }
 
-    // Ask for geolocation with a sensible timeout
     if (navigator?.geolocation) {
       navigator.geolocation.getCurrentPosition(onGeoSuccess, onGeoError, {
         enableHighAccuracy: false,
         timeout: 8000,
-        maximumAge: 5 * 60 * 1000, // up to 5 minutes cached
+        maximumAge: 5 * 60 * 1000,
       });
     } else {
       setReady(true);
@@ -113,14 +96,31 @@ export default function WeatherBlip({ href = "/weather", className = "" }) {
     };
   }, []);
 
-  // Render nothing until we have something to show (or we’re sure we don’t)
-  if (!ready || (tempF == null && !label)) return null;
+  // Placeholder pill to reserve space (prevents header shift)
+  const Placeholder = (
+    <div
+      className={[
+        "inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold",
+        "min-w-[140px]", // reserve typical width
+        "opacity-60 animate-pulse",
+        className,
+      ].join(" ")}
+      aria-hidden="true"
+    >
+      <span className="inline-block h-4 w-4 rounded-full bg-white/30" />
+      <span className="w-20 rounded bg-white/20">&nbsp;</span>
+    </div>
+  );
+
+  if (!ready) return Placeholder;
+  if (tempF == null && !label) return null;
 
   return (
     <Link
       href={href}
       className={[
         "inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold hover:bg-white/15",
+        "min-w-[140px]", // keep width stable even after load
         className,
       ].join(" ")}
       title="Weather"
