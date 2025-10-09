@@ -34,7 +34,7 @@ export default function SiteHeader({ logo, stations = [], menu }) {
 
       <div className="mx-auto max-w-[1300px] px-4 overflow-visible">
         <div className="flex flex-wrap items-center justify-between gap-3 py-8 lg:py-10">
-          {/* Left: Logo (never shrink) */}
+          {/* Left: Logo */}
           <Link href="/" className="flex shrink-0 items-center gap-2">
             <img
               src={logo || "/logos/sandhillspost.svg"}
@@ -43,7 +43,7 @@ export default function SiteHeader({ logo, stations = [], menu }) {
             />
           </Link>
 
-          {/* Center: Desktop nav (flexible) */}
+          {/* Center: Desktop nav */}
           <div className="hidden min-w-0 flex-1 justify-center lg:flex">
             <nav className="relative z-[60] flex items-center gap-2 overflow-visible">
               {links.map((item, idx) => {
@@ -60,10 +60,10 @@ export default function SiteHeader({ logo, stations = [], menu }) {
                       <div
                         className="
                           absolute left-0 top-full z-[100] min-w-[240px]
-                          translate-y-3 bg-[#012A3D] text-white shadow-xl
+                          bg-[#012A3D] text-white shadow-xl
                           opacity-0 pointer-events-none
-                          transition-all duration-300 ease-in-out
-                          group-hover:opacity-100 group-hover:translate-y-1 group-hover:pointer-events-auto
+                          transition-opacity duration-200 ease-in-out
+                          group-hover:opacity-100 group-hover:pointer-events-auto
                         "
                       >
                         {item.sublinks.map((sub, si) => {
@@ -121,42 +121,26 @@ export default function SiteHeader({ logo, stations = [], menu }) {
             </Link>
           </div>
 
-          {/* Mobile: Hamburger menu only */}
+          {/* Mobile: Hamburger menu */}
           <div className="flex items-center gap-2 lg:hidden">
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-expanded={open ? "true" : "false"}
               aria-controls="mobile-menu"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-white/10"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg白/10"
               aria-label={open ? "Close menu" : "Open menu"}
             >
               {open ? (
-                // X icon (white)
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  className="h-6 w-6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 6l12 12M18 6l-12 12"
-                  />
+                // X icon
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                  className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6l-12 12" />
                 </svg>
               ) : (
-                // Hamburger (white)
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  className="h-6 w-6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
+                // Hamburger
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                  className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
               )}
@@ -165,7 +149,7 @@ export default function SiteHeader({ logo, stations = [], menu }) {
         </div>
       </div>
 
-      {/* ===== Mobile overlay & panel ===== */}
+      {/* Mobile overlay */}
       <div
         className={[
           "fixed inset-0 z-[70] bg-black/40 transition-opacity duration-300 lg:hidden",
@@ -177,7 +161,7 @@ export default function SiteHeader({ logo, stations = [], menu }) {
         aria-hidden="true"
       />
 
-      {/* Sliding panel */}
+      {/* Mobile panel */}
       <div
         id="mobile-menu"
         className={[
@@ -200,20 +184,10 @@ export default function SiteHeader({ logo, stations = [], menu }) {
               className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-white/10"
               aria-label="Close menu"
             >
-              {/* X icon (white) */}
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 6l12 12M18 6l-12 12"
-                />
+              {/* X icon */}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6l-12 12" />
               </svg>
             </button>
           </div>
@@ -226,14 +200,8 @@ export default function SiteHeader({ logo, stations = [], menu }) {
               onClick={() => setOpen(false)}
               aria-label="Search"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="11" cy="11" r="7" />
                 <path d="M20 20l-3.5-3.5" strokeLinecap="round" />
               </svg>
