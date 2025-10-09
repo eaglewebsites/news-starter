@@ -1,143 +1,108 @@
 // app/posts/[id]/page.js
+import { fetchPostByIdOrSlug } from "@/lib/api/post";
+import { getCurrentSiteKey } from "@/lib/site-detection";
 import { notFound } from "next/navigation";
-import ArticleHeader from "@/components/ArticleHeader";
-import FeaturedMedia from "@/components/FeaturedMedia";
-import ArticleBody from "@/components/ArticleBody";
-//import RelatedGrid from "@/components/RelatedGrid";
-import { fetchArticleById, fetchRelated } from "@/lib/api/articles";
 
+export const revalidate = 0;
 export const dynamic = "force-dynamic";
 
-export default async function StoryPage({ params }) {
-  const { id } = await params;
+/** Normalize an image URL/path for robust comparisons */
+function normalizePathish(u) {
+  if (!u) return "";
+  let s = String(u).trim().toLowerCase();
 
-  let article;
+  // Try URL parsing first
   try {
-    article = await fetchArticleById(id);
+    const url = new URL(s);
+    s = url.pathname; // drop scheme/host/query/hash
   } catch {
-    return notFound();
-  }
-  if (!article) return notFound();
-
-  const breadcrumb = article.section
-    ? [
-        {
-          label: article.section?.name || article.section,
-          href: `/section/${article.section?.slug || article.section}`,
-        },
-      ]
-    : [];
-
-  const related = await fetchRelated(article.id).catch(() => []);
-
-  // Featured image URL for the header block
-  const featuredSrc =
-    article.image?.src ||
-    article.featuredImage?.src ||
-    article.image ||
-    "";
-
-  // Source body HTML
-  let bodyHtml = article.html || article.bodyHtml || article.body || "";
-
-  // --- helpers ---
-  const decodeEntities = (s) =>
-    (s || "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-
-  // 1) Extract first <figcaption>...</figcaption> from the body (as plain text)
-  let captionFromBody = null;
-  {
-    const figcapRe = /<figcaption[^>]*>([\s\S]*?)<\/figcaption>/i;
-    const m = bodyHtml.match(figcapRe);
-    if (m && m[1]) {
-      captionFromBody = decodeEntities(m[1].replace(/<[^>]+>/g, "").trim());
-    }
+    // Strip scheme/host if provided (best-effort)
+    s = s.replace(/^https?:\/\/[^/]+/i, "");
+    // Drop query/hash
+    s = s.split("?")[0].split("#")[0];
   }
 
-  // 2) Remove the first <figure>...</figure> block from the body (so we don't duplicate the hero image/caption)
-  {
-    const firstFigureRe = /<figure[^>]*>[\s\S]*?<\/figure>/i;
-    bodyHtml = bodyHtml.replace(firstFigureRe, "");
+  // Decode and collapse duplicate slashes
+  try { s = decodeURIComponent(s); } catch {}
+  s = s.replace(/\/{2,}/g, "/");
+
+  // Remove common thumbnail/resizing suffixes like "-1200x630" before extension
+  s = s.replace(/-?\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i, "");
+
+  return s;
+}
+
+/** Extract the filename (without any size suffix) for looser matching */
+function filenameKey(u) {
+  const p = normalizePathish(u);
+  const file = p.split("/").filter(Boolean).pop() || "";
+  return file.replace(/-?\d{2,4}x\d{2,4}(?=\.[a-z0-9]+$)/i, "");
+}
+
+/** Decide if the featured image is already present in the HTML body */
+function bodyAlreadyContainsImage(featuredUrl, bodyHtml) {
+  if (!featuredUrl || !bodyHtml) return false;
+
+  const body = String(bodyHtml).toLowerCase();
+
+  // 1) Direct URL/path match
+  const normFeat = normalizePathish(featuredUrl);
+  if (normFeat && body.includes(normFeat)) return true;
+
+  // 2) Filename match (handles CDN/host differences and resized variants)
+  const key = filenameKey(featuredUrl);
+  return key ? body.includes(key) : false;
+}
+
+export default async function PostPage({ params }) {
+  const { id } = await params;
+  const siteKey = ((await getCurrentSiteKey()) || "sandhills").toLowerCase();
+
+  let post;
+  try {
+    post = await fetchPostByIdOrSlug({ idOrSlug: id, site: siteKey });
+  } catch {
+    notFound();
   }
 
-  // 3) Map caption/credit fields as backups if body had no caption
-  const mappedCaption =
-    captionFromBody ||
-    article.image?.caption ||
-    article.featuredImage?.caption ||
-    article.imageCaption ||
-    article.caption ||
-    null;
-
-  const mappedCredit =
-    article.image?.credit ||
-    article.featuredImage?.credit ||
-    article.photoCredit ||
-    article.credit ||
-    null;
+  const shouldShowFeatured =
+    !!post.image && !bodyAlreadyContainsImage(post.image, post.bodyHtml);
 
   return (
-    <div className="bg-white text-black">
-      {/* Header is rendered globally in app/layout.js */}
-      <div className="mx-auto grid w-full max-w-[1200px] grid-cols-1 gap-8 px-4 md:grid-cols-12">
-        {/* Main content */}
-        <div className="md:col-span-8">
-          <ArticleHeader
-            breadcrumb={breadcrumb}
-            title={article.title}
-            postedISO={article.published}
-            updatedISO={article.updated}
-          />
+    <main className="mx-auto max-w-3xl px-4 py-8">
+      <h1 className="text-3xl font-bold leading-tight">{post.title}</h1>
 
-          {/* Space between meta and image */}
-          <div className="mt-[20px]">
-            <FeaturedMedia
-              src={featuredSrc}
-              alt={
-                article.image?.alt ||
-                article.featuredImage?.alt ||
-                article.title
-              }
-              caption={mappedCaption}       // ← shows extracted figcaption text
-              photoFrom={mappedCredit}      // ← still supports your "Photo from:" behavior
-            />
-          </div>
-
-          {/* Body with the first figure removed */}
-          <div className="pb-[100px]">
-            <ArticleBody html={bodyHtml} />
-          </div>
-
-          {/* <RelatedGrid items={related} /> */}
-        </div>
-
-        {/* Right rail (weather + ads) */}
-        <aside className="md:col-span-4">
-          <div className="sticky top-6 space-y-4">
-            <div className="rounded-[6px] border border-black/10 bg-[#F4F5F6] p-4">
-              <div className="mb-2 font-bold">Weather</div>
-              <div className="text-[14px]">
-                Forecast: {new Date().toLocaleDateString()}
-              </div>
-            </div>
-
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex h-[150px] items-center justify-center rounded-[6px] bg-[#D9D9D9] text-[14px] text-black/70"
-              >
-                AD HERE
-              </div>
-            ))}
-          </div>
-        </aside>
+      <div className="mt-2 text-sm opacity-70">
+        {post.author && <span>By {post.author}</span>}
+        {post.author && post.updated && <span> · </span>}
+        {post.updated && (
+            <time dateTime={new Date(post.updated).toISOString()}>
+              {new Date(post.updated).toLocaleString()}
+            </time>
+        )}
       </div>
-    </div>
+
+      {shouldShowFeatured && (
+        <figure className="mt-5">
+          <img
+            src={post.image}
+            alt={post.title || ""}
+            className="w-full h-auto rounded-xl"
+            loading="lazy"
+          />
+          {post.caption && (
+            <figcaption
+              className="mt-2 text-xs opacity-70"
+              dangerouslySetInnerHTML={{ __html: post.caption }}
+            />
+          )}
+        </figure>
+      )}
+
+      <article
+        className="prose prose-lg max-w-none mt-6"
+        dangerouslySetInnerHTML={{ __html: post.bodyHtml || "<p>(No content)</p>" }}
+      />
+    </main>
   );
 }
