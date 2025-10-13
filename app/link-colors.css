@@ -1,0 +1,32 @@
+/* app/link-colors.css
+   Sitewide link color overrides, including Tailwind Typography `.prose` blocks.
+*/
+
+@layer base {
+  /* Base links */
+  a {
+    color: #1E99D0;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  a:visited {
+    color: #1E99D0; /* keep visited the same brand color */
+  }
+
+  /* Tailwind Typography `prose` blocks often set their own link colors.
+     Force them to the same brand color to keep things consistent. */
+  .prose a,
+  .prose a:visited {
+    color: #1E99D0;
+  }
+  .prose a:hover {
+    text-decoration: underline;
+  }
+}
+
+/* If you’re not using Tailwind’s @layer in your build, the plain CSS below is a safe fallback:
+a, a:visited,
+.prose a, .prose a:visited { color: #1E99D0; }
+a:hover, .prose a:hover { text-decoration: underline; }
+*/

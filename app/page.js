@@ -46,7 +46,7 @@ export default async function Home() {
   const podcasts = []; // fill later
 
   return (
-    <main className="mx-auto max-w-[1300px] px-4 py-6">
+    <main className="home-page mx-auto max-w-[1300px] px-4 py-6">
       {/* Top narrow ad */}
       <div className="mb-6">
         <AdSlot network="gam" slot="top-leader" />
