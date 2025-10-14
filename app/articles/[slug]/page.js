@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 export default async function ArticlePage({ params }) {
   const session = await getServerSession(authOptions);

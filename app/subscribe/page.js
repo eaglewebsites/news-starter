@@ -1,7 +1,7 @@
 // app/subscribe/page.js
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 import { useState } from "react";
 
 export default function SubscribePage() {

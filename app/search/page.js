@@ -1,5 +1,5 @@
 // app/search/page.js
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 import SearchForm from "@/components/SearchForm";
 import { searchArticles } from "@/lib/api/search";
 

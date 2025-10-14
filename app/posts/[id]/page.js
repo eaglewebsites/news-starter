@@ -2,7 +2,7 @@
 import { fetchPostByIdOrSlug } from "@/lib/api/post";
 import { fetchCategoryPosts } from "@/lib/api/categories";
 import { getCurrentSiteKey } from "@/lib/site-detection";
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import ShareRow from "@/components/ShareRow";

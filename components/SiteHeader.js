@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 import { useState } from "react";
 import { safeHref, keyOf } from "@/lib/link-helpers";
 import WeatherBlip from "@/components/WeatherBlip";

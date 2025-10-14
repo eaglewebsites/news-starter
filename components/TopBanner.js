@@ -1,6 +1,6 @@
 // components/TopBanner.js
 import { safeHref } from '@/lib/link-helpers'
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 export default function TopBanner({ stations = [] }) {
   const primaryHref = stations[0]?.href || "#";

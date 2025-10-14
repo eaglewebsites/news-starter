@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { safeHref } from '@/lib/link-helpers'
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 
 function formatDate(input) {

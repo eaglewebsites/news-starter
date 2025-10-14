@@ -1,7 +1,7 @@
 // components/HomeHero.js
 import Image from "next/image";
 import { safeHref } from '@/lib/link-helpers'
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 export default function HomeHero({ story }) {
   if (!story) return null;

@@ -1,7 +1,7 @@
 // components/StoryListWithAds.js
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 function root(obj) {
   return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
@@ -78,7 +78,7 @@ export default function StoryListWithAds({
               const updated =
                 pick(post, ["updated", "updated_at", "modified", "date", "published_at"]) || null;
 
-              const snippet = raw._snippet || ""; // <-- enriched text lives here
+              const snippet = raw._snippet || ""; // enriched text lives here
               const id = pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
 
               return (
@@ -133,9 +133,9 @@ export default function StoryListWithAds({
           {footer ? <div className="mt-6">{footer}</div> : null}
         </div>
 
-        {/* Right: vertical ad rail */}
+        {/* Right: vertical ad rail (now scrolling normally) */}
         <aside className="hidden lg:block">
-          <div className="sticky top-4 flex flex-col gap-8">
+          <div className="flex flex-col gap-8">
             {Array.from({ length: adSlots }).map((_, i) => (
               <div
                 key={i}

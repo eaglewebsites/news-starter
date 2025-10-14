@@ -1,5 +1,5 @@
 // components/ArticleHeader.js
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 export default function ArticleHeader({
   breadcrumb = [],

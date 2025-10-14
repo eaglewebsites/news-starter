@@ -1,7 +1,7 @@
 // components/CategoryCard.js
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 export default function CategoryCard({ post }) {
   const href = post?.href || "#";

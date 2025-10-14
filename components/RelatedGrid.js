@@ -1,5 +1,5 @@
 // components/RelatedGrid.js
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 
 export default function RelatedGrid({ items = [] }) {
   const hasItems = Array.isArray(items) && items.length > 0;

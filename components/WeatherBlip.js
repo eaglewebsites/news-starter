@@ -1,7 +1,7 @@
 // components/WeatherBlip.js
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SafeLink";
 import { useEffect, useRef, useState } from "react";
 
 /**
