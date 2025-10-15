@@ -3,33 +3,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import StoryListWithAds from "@/components/StoryListWithAds";
-
-function root(obj) {
-  return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
-}
-
-function getApiBase() {
-  return process.env.NEXT_PUBLIC_EAGLE_BASE_API?.replace(/\/+$/, "") ||
-         process.env.EAGLE_BASE_API?.replace(/\/+$/, "") ||
-         "https://api.eaglewebservices.com/v3";
-}
-
-async function fetchCategoryBatch({ slug, site, limit, offset }) {
-  const BASE = getApiBase();
-  const qs = new URLSearchParams({
-    categories: slug,
-    public: "true",
-    sites: site || "sandhills",
-    status: "published",
-    limit: String(limit),
-    offset: String(offset),
-  });
-  const url = `${BASE}/posts?${qs.toString()}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`[category/load-more] ${res.status} ${res.statusText}`);
-  const data = await res.json();
-  return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-}
+import { getApiBase } from "@/lib/api-base";
 
 export default function CategoryListWithLoadMore({
   slug,
@@ -37,59 +11,76 @@ export default function CategoryListWithLoadMore({
   pageSize = 24,
   sectionTitle = "Category",
   initialItems = [],
-  ...listProps // ← pass-thru (showControls, searchPlaceholder, etc.)
+
+  // Pass-through props for StoryListWithAds (e.g., obits tweaks)
+  ...listProps
 }) {
-  const [items, setItems] = useState(initialItems);
-  const [offset, setOffset] = useState(initialItems.length || 0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [done, setDone] = useState(false);
+  const BASE = getApiBase();
 
-  const canLoadMore = !loadingMore && !done;
+  const [items, setItems] = useState(Array.isArray(initialItems) ? initialItems : []);
+  const [offset, setOffset] = useState(items.length);
+  const [loading, setLoading] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
 
-  const onLoadMore = useCallback(async () => {
-    if (!canLoadMore) return;
-    setLoadingMore(true);
+  const hasMore = !exhausted && !loading;
+
+  const loadMore = useCallback(async () => {
+    if (!slug || loading || exhausted) return;
+    setLoading(true);
     try {
-      const batch = await fetchCategoryBatch({ slug, site, limit: pageSize, offset });
-      if (!batch.length) {
-        setDone(true);
-      } else {
-        setItems(prev => [...prev, ...batch]);
-        setOffset(prev => prev + batch.length);
-      }
-    } catch (e) {
-      console.error("[category] load more failed:", e);
-      setDone(true);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [canLoadMore, slug, site, pageSize, offset]);
+      const qs = new URLSearchParams({
+        categories: String(slug),
+        public: "true",
+        sites: site || "sandhills",
+        status: "published",
+        limit: String(pageSize),
+        offset: String(offset),
+      });
 
-  const footer = useMemo(() => (
-    <div className="mt-4">
-      <button
-        type="button"
-        onClick={onLoadMore}
-        disabled={!canLoadMore}
-        className={[
-          "inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold",
-          canLoadMore
-            ? "border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50"
-            : "cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400",
-        ].join(" ")}
-      >
-        {loadingMore ? "Loading…" : `Load More ${sectionTitle}`}
-      </button>
-    </div>
-  ), [onLoadMore, canLoadMore, loadingMore, sectionTitle]);
+      const url = `${BASE}/posts?${qs.toString()}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`[category:load-more] ${res.status} ${res.statusText}`);
+      const data = await res.json();
+
+      const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setItems(prev => [...prev, ...arr]);
+      setOffset(prev => prev + arr.length);
+      if (arr.length < pageSize) setExhausted(true);
+    } catch (e) {
+      console.error("[category:load-more] failed:", e);
+      setExhausted(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [slug, site, pageSize, offset, loading, exhausted, BASE]);
+
+  const footer = useMemo(() => {
+    if (exhausted && items.length > 0) {
+      return <div className="text-center text-sm text-neutral-500 py-4">No more stories.</div>;
+    }
+    if (hasMore) {
+      return (
+        <div className="flex justify-center py-4">
+          <button
+            type="button"
+            onClick={loadMore}
+            className="rounded bg-neutral-900 px-4 py-2 text-white hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          >
+            Load more
+          </button>
+        </div>
+      );
+    }
+    return null;
+  }, [hasMore, exhausted, items.length, loadMore]);
 
   return (
     <StoryListWithAds
       items={items}
       sectionTitle={sectionTitle}
-      footer={!done ? footer : null}
-      loading={loadingMore}
+      loading={loading}
       loadingMode="append"
+      footer={footer}
       {...listProps}
     />
   );
