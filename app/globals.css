@@ -27,6 +27,32 @@
   --shadow-card: 0 1px 2px rgba(0,0,0,.05), 0 8px 20px rgba(0,0,0,.04);
 }
 
+/* === Brand link tokens (breadcrumbs etc.) === */
+:root {
+  /* Tweak these two to match your brand */
+  --brand-link:        #0369a1; /* default: sky-700-ish */
+  --brand-link-hover:  #075985; /* default: sky-800-ish */
+}
+
+/* Breadcrumb anchors use brand tokens and beat aggressive globals */
+[aria-label="Breadcrumb"] a {
+  color: var(--brand-link) !important;
+  text-decoration: none;
+}
+[aria-label="Breadcrumb"] a:hover {
+  color: var(--brand-link-hover) !important;
+  text-decoration: underline;
+}
+
+/* (Optional) Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand-link:       #38bdf8;  /* sky-400-ish */
+    --brand-link-hover: #0ea5e9;  /* sky-500-ish */
+  }
+}
+
+
 /* Base */
 html, body { color: var(--color-ink); background: var(--color-white); font-family: var(--font-sans); }
 
@@ -130,3 +156,6 @@ header a:hover, nav a:hover, .site-header a:hover, .top-nav a:hover, .main-nav a
 /* Arrows stay blue on home */
 .home-page .arrow-chip,
 .home-page .arrow-chip a { color: var(--color-sky) !important; }
+/* Ensure breadcrumb links are readable */
+[aria-label="Breadcrumb"] a { color: var(--tw-prose-links, #0369a1) !important; }
+
