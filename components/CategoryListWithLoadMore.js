@@ -1,216 +1,96 @@
 // components/CategoryListWithLoadMore.js
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import StoryListWithAds from "./StoryListWithAds";
+import { useCallback, useMemo, useState } from "react";
+import StoryListWithAds from "@/components/StoryListWithAds";
 
-/* --------------------- utils --------------------- */
 function root(obj) {
   return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
 }
-function pick(obj, paths = []) {
-  const o = root(obj);
-  for (const p of paths) {
-    const v = p.split(".").reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), o);
-    if (v != null && v !== "") return v;
-  }
-  return undefined;
-}
-function normalizeArray(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.data)) return payload.data;
-  if (payload && payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
-    return [payload];
-  }
-  return [];
-}
-function uniqueMerge(existing, incoming) {
-  const seen = new Set();
-  const keyOf = (o) => {
-    const p = o && o.data ? o.data : o;
-    return String(
-      p?.id ?? p?.uuid ?? p?.guid ?? p?.slug ?? p?.seo_slug ?? p?.post_slug ?? Math.random()
-    );
-  };
-  const out = [];
-  for (const it of existing) {
-    const k = keyOf(it);
-    if (!seen.has(k)) { seen.add(k); out.push(it); }
-  }
-  for (const it of incoming) {
-    const k = keyOf(it);
-    if (!seen.has(k)) { seen.add(k); out.push(it); }
-  }
-  return out;
+
+function getApiBase() {
+  return process.env.NEXT_PUBLIC_EAGLE_BASE_API?.replace(/\/+$/, "") ||
+         process.env.EAGLE_BASE_API?.replace(/\/+$/, "") ||
+         "https://api.eaglewebservices.com/v3";
 }
 
-/* --------------------- batch enrichment --------------------- */
-function toBatchContexts(items) {
-  return items.map((raw) => {
-    const p = root(raw);
-    return {
-      key: pick(p, ["slug", "seo_slug", "post_slug"]) || pick(p, ["id", "uuid", "guid"]) || pick(p, ["title", "headline"]) || Math.random().toString(36).slice(2),
-      id:  pick(p, ["id", "uuid", "guid"]) || null,
-      uuid: pick(p, ["uuid"]) || null,
-      guid: pick(p, ["guid"]) || null,
-      slug: pick(p, ["slug"]) || null,
-      seo_slug: pick(p, ["seo_slug"]) || null,
-      post_slug: pick(p, ["post_slug"]) || null,
-      title: pick(p, ["title", "headline"]) || null,
-    };
+async function fetchCategoryBatch({ slug, site, limit, offset }) {
+  const BASE = getApiBase();
+  const qs = new URLSearchParams({
+    categories: slug,
+    public: "true",
+    sites: site || "sandhills",
+    status: "published",
+    limit: String(limit),
+    offset: String(offset),
   });
-}
-async function enrichBatch(items, siteKey) {
-  if (!items.length) return items;
-  const contexts = toBatchContexts(items);
-  try {
-    const res = await fetch("/api/post/summary/batch", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify({ site: siteKey || "sandhills", items: contexts }),
-    });
-    if (!res.ok) return items;
-    const json = await res.json();
-    if (!json || !json.ok || !json.map) return items;
-
-    const map = json.map;
-    // apply snippets by matching key (slug preferred)
-    return items.map((raw) => {
-      const p = root(raw);
-      const key =
-        pick(p, ["slug", "seo_slug", "post_slug"]) ||
-        pick(p, ["id", "uuid", "guid"]) ||
-        pick(p, ["title", "headline"]);
-      const snip = key ? map[key] : "";
-      return snip ? { ...raw, _snippet: snip } : raw;
-    });
-  } catch {
-    return items;
-  }
+  const url = `${BASE}/posts?${qs.toString()}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`[category/load-more] ${res.status} ${res.statusText}`);
+  const data = await res.json();
+  return Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
 }
 
-/* --------------------- component --------------------- */
 export default function CategoryListWithLoadMore({
-  initialItems = [],
   slug,
   site,
   pageSize = 24,
-  sectionTitle,
-  adSlots = 6,
+  sectionTitle = "Category",
+  initialItems = [],
+  ...listProps // ← pass-thru (showControls, searchPlaceholder, etc.)
 }) {
-  const [items, setItems] = useState(initialItems || []);
-  const [offset, setOffset] = useState((initialItems || []).length || 0);
-  const [loading, setLoading] = useState(false);
-  const [ended, setEnded] = useState(false);
-  const [error, setError] = useState(null);
-  const enrichingRef = useRef(false);
+  const [items, setItems] = useState(initialItems);
+  const [offset, setOffset] = useState(initialItems.length || 0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [done, setDone] = useState(false);
 
-  // Initial batch enrichment (fast, single call)
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!items.length) return;
-      if (enrichingRef.current) return;
-      enrichingRef.current = true;
-      try {
-        const enriched = await enrichBatch(items, site);
-        if (alive) setItems(enriched);
-      } finally {
-        enrichingRef.current = false;
-      }
-    })();
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // once
+  const canLoadMore = !loadingMore && !done;
 
-  // Revalidate snippets on Back/visibility/page-show (bfcache)
-  useEffect(() => {
-    const ensure = async () => {
-      if (enrichingRef.current) return;
-      const missing = items.some((it) => !it?._snippet);
-      if (!missing) return;
-      enrichingRef.current = true;
-      try {
-        const enriched = await enrichBatch(items, site);
-        setItems(enriched);
-      } finally {
-        enrichingRef.current = false;
-      }
-    };
-
-    const onShow = () => ensure();
-    const onVis = () => { if (document.visibilityState === "visible") ensure(); };
-
-    window.addEventListener("pageshow", onShow);          // fires on bfcache restore
-    document.addEventListener("visibilitychange", onVis); // tab/back visibility
-
-    return () => {
-      window.removeEventListener("pageshow", onShow);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [items, site]);
-
-  const loadMore = useCallback(async () => {
-    if (loading || ended) return;
-    setLoading(true);
-    setError(null);
+  const onLoadMore = useCallback(async () => {
+    if (!canLoadMore) return;
+    setLoadingMore(true);
     try {
-      const url = new URL("https://api.eaglewebservices.com/v3/posts");
-      url.searchParams.set("categories", slug);
-      url.searchParams.set("public", "true");
-      url.searchParams.set("sites", site || "sandhills");
-      url.searchParams.set("status", "published");
-      url.searchParams.set("limit", String(pageSize));
-      url.searchParams.set("offset", String(offset));
-
-      const res = await fetch(url.toString(), { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = normalizeArray(await res.json());
-      if (!Array.isArray(data) || data.length === 0) {
-        setEnded(true);
-        setLoading(false);
-        return;
+      const batch = await fetchCategoryBatch({ slug, site, limit: pageSize, offset });
+      if (!batch.length) {
+        setDone(true);
+      } else {
+        setItems(prev => [...prev, ...batch]);
+        setOffset(prev => prev + batch.length);
       }
-
-      // Batch-enrich the new slice before merging (fast)
-      const enrichedSlice = await enrichBatch(data, site);
-      setItems((prev) => uniqueMerge(prev, enrichedSlice));
-      setOffset((o) => o + data.length);
-      if (data.length < pageSize) setEnded(true);
     } catch (e) {
-      setError(e?.message || "Failed to load more");
+      console.error("[category] load more failed:", e);
+      setDone(true);
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
-  }, [slug, site, pageSize, offset, loading, ended]);
+  }, [canLoadMore, slug, site, pageSize, offset]);
 
-  const footer = useMemo(() => {
-    return (
-      <div className="flex items-center justify-start">
-        {!ended ? (
-          <button
-            type="button"
-            onClick={loadMore}
-            disabled={loading}
-            className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-900 transition-colors hover:bg-[#012A3D] hover:text-white"
-          >
-            {loading ? "Loading…" : `Load More ${sectionTitle?.replace(/^Most Recent\s+/i, "").replace(/\s+Stories$/i, "") || "Stories"}`}
-          </button>
-        ) : (
-          <span className="text-sm text-neutral-500">No more stories.</span>
-        )}
-        {error && <span className="ml-3 text-sm text-red-600">{error}</span>}
-      </div>
-    );
-  }, [ended, loading, error, loadMore, sectionTitle]);
+  const footer = useMemo(() => (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={onLoadMore}
+        disabled={!canLoadMore}
+        className={[
+          "inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold",
+          canLoadMore
+            ? "border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50"
+            : "cursor-not-allowed border-neutral-200 bg-neutral-100 text-neutral-400",
+        ].join(" ")}
+      >
+        {loadingMore ? "Loading…" : `Load More ${sectionTitle}`}
+      </button>
+    </div>
+  ), [onLoadMore, canLoadMore, loadingMore, sectionTitle]);
 
   return (
     <StoryListWithAds
       items={items}
       sectionTitle={sectionTitle}
-      adSlots={adSlots}
-      footer={footer}
+      footer={!done ? footer : null}
+      loading={loadingMore}
+      loadingMode="append"
+      {...listProps}
     />
   );
 }
