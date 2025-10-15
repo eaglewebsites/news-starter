@@ -1,7 +1,10 @@
 // app/category/[slug]/page.js
-import CategoryListWithLoadMore from "@/components/CategoryListWithLoadMore";
 
-/* ---------------- helpers to match client enrichment ---------------- */
+import CategoryListWithLoadMore from "@/components/CategoryListWithLoadMore";
+import { getCurrentSiteKey } from "@/lib/site-detection";
+
+/* ------------------------ helpers (local to this file) ----------------------- */
+
 function root(obj) {
   return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
 }
@@ -13,139 +16,117 @@ function pick(obj, paths = []) {
   }
   return undefined;
 }
-function normalizeArray(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (payload && Array.isArray(payload.data)) return payload.data;
-  if (payload && payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) {
-    return [payload];
+
+function toPlainText(htmlLike) {
+  if (!htmlLike || typeof htmlLike !== "string") return "";
+  const text = htmlLike
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text;
+}
+
+function makeSnippetFromPost(post, maxLen = 180) {
+  const blocksJson = pick(post, ["blocks"]);
+  if (blocksJson && typeof blocksJson === "string") {
+    try {
+      const blocks = JSON.parse(blocksJson);
+      const para = Array.isArray(blocks) ? blocks.find(b => b?.type === "paragraph" && b?.data?.text) : null;
+      if (para?.data?.text) {
+        const s = toPlainText(para.data.text);
+        if (s) return s.length > maxLen ? s.slice(0, maxLen - 1).trimEnd() + "…" : s;
+      }
+    } catch {}
   }
-  return [];
-}
-function contextsFor(items) {
-  return items.map((raw) => {
-    const p = root(raw);
-    return {
-      key:
-        pick(p, ["slug", "seo_slug", "post_slug"]) ||
-        pick(p, ["id", "uuid", "guid"]) ||
-        pick(p, ["title", "headline"]) ||
-        Math.random().toString(36).slice(2),
-      id: pick(p, ["id", "uuid", "guid"]) || null,
-      uuid: pick(p, ["uuid"]) || null,
-      guid: pick(p, ["guid"]) || null,
-      slug: pick(p, ["slug"]) || null,
-      seo_slug: pick(p, ["seo_slug"]) || null,
-      post_slug: pick(p, ["post_slug"]) || null,
-      title: pick(p, ["title", "headline"]) || null,
-    };
-  });
+  const bodyHtml = pick(post, ["body", "content", "html"]);
+  const text = toPlainText(bodyHtml);
+  if (!text) return "";
+  return text.length > maxLen ? text.slice(0, maxLen - 1).trimEnd() + "…" : text;
 }
 
-/* ---------------- simple site key + base URL helpers ---------------- */
-function getSiteKey() {
-  return (process.env.NEXT_PUBLIC_SITE_KEY || process.env.EAGLE_DEFAULT_SITE || "sandhills").toLowerCase();
-}
-function getBaseUrl() {
-  return (process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+function titleCase(s = "") {
+  return s
+    .split(/[-_ ]+/)
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .join(" ");
 }
 
-/* ---------------- server fetch for category page ---------------- */
+function getApiBase() {
+  return process.env.EAGLE_BASE_API?.replace(/\/+$/, "") || "https://api.eaglewebservices.com/v3";
+}
+
 async function fetchCategoryPage({ slug, site, limit = 24, offset = 0 }) {
-  const url = new URL("https://api.eaglewebservices.com/v3/posts");
-  url.searchParams.set("categories", slug);
-  url.searchParams.set("public", "true");
-  url.searchParams.set("sites", site || "sandhills");
-  url.searchParams.set("status", "published");
-  url.searchParams.set("limit", String(limit));
-  url.searchParams.set("offset", String(offset));
-
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[category][fetch]", url.toString());
-  }
-
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`[category] ${res.status} ${res.statusText}`);
-  const json = await res.json();
-  const arr = normalizeArray(json);
-
-  if (process.env.NODE_ENV !== "production") {
-    console.log(
-      "[category][result]",
-      slug,
-      "→",
-      Array.isArray(arr) ? `${arr.length} items` : "0 items",
-      `(limit=${limit}, offset=${offset}, site=${site})`
-    );
-  }
-  return arr;
-}
-
-/* ---------------- SSR batch enrichment so snippets survive Back ---------------- */
-async function ssrEnrichSnippets(items, siteKey) {
-  if (!items?.length) return items;
-  const base = getBaseUrl();
-
-  const payload = {
-    site: siteKey || "sandhills",
-    items: contextsFor(items),
-  };
-
-  let map = null;
-  try {
-    const res = await fetch(`${base}/api/post/summary/batch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json && json.ok && json.map) map = json.map;
-    }
-  } catch {
-    // if it fails, we’ll render without snippets; client will enrich
-  }
-
-  if (!map) return items;
-
-  return items.map((raw) => {
-    const p = root(raw);
-    const key =
-      pick(p, ["slug", "seo_slug", "post_slug"]) ||
-      pick(p, ["id", "uuid", "guid"]) ||
-      pick(p, ["title", "headline"]);
-    const snip = key ? map[key] : "";
-    return snip ? { ...raw, _snippet: snip } : raw;
+  if (!slug) throw new Error("[category] Missing required param: slug");
+  const BASE = getApiBase();
+  const qs = new URLSearchParams({
+    categories: slug,
+    public: "true",
+    sites: site || "sandhills",
+    status: "published",
+    limit: String(limit),
+    offset: String(offset),
   });
+  const url = `${BASE}/posts?${qs.toString()}`;
+  console.log("[category][fetch]", url);
+
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`[category] ${res.status} ${res.statusText}`);
+  const data = await res.json();
+
+  const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+  const withSnippets = arr.map(item => {
+    const post = root(item);
+    const _snippet = makeSnippetFromPost(post);
+    return { ...item, _snippet };
+  });
+
+  console.log("[category][result]", slug, "→", `${withSnippets.length} items (limit=${limit}, offset=${offset}, site=${site || "sandhills"})`);
+  return withSnippets;
 }
+
+/* --------------------------------- page ------------------------------------- */
+
+export const dynamic = "force-dynamic";
 
 export default async function CategoryPage({ params }) {
-  // In newer Next versions, params is an async getter.
-  const { slug } = await params; // <-- await fixes the “sync dynamic APIs” error
+  const resolved = await params;
+  const slug = resolved?.slug;
   const PAGE_SIZE = 24;
 
-  const siteKey = getSiteKey();
+  const siteKey = await getCurrentSiteKey();
+  const sectionTitle = titleCase(String(slug || "Category"));
 
-  // 1) fetch first page
-  const initialItems = await fetchCategoryPage({
-    slug,
-    site: siteKey,
-    limit: PAGE_SIZE,
-    offset: 0,
-  });
+  let initialItems = [];
+  try {
+    initialItems = await fetchCategoryPage({ slug, site: siteKey, limit: PAGE_SIZE, offset: 0 });
+  } catch (e) {
+    console.error("[category] initial fetch failed:", e);
+    initialItems = [];
+  }
 
-  // 2) enrich on the server so snippets are in initial HTML
-  const initialWithSnippets = await ssrEnrichSnippets(initialItems, siteKey);
+  // Turn on Filter + Search for obits
+  const isObits = /obit/i.test(String(slug || ""));
+  const listProps = isObits
+    ? {
+        showControls: true,
+        searchPlaceholder: "Search obituaries…",
+        categoryLabel: "Filter",
+        noCropImages: true, // avoid cropping memorial photos
+      }
+    : {};
 
-  // 3) hand off to client for rendering + Load More
   return (
-    <CategoryListWithLoadMore
-      initialItems={initialWithSnippets}
-      slug={slug}
-      site={siteKey}
-      pageSize={PAGE_SIZE}
-      sectionTitle={`Most Recent ${slug?.charAt(0)?.toUpperCase()}${slug?.slice(1)} Stories`}
-      adSlots={6}
-    />
+    <main className="mx-auto w-full max-w-7xl px-4">
+      <CategoryListWithLoadMore
+        slug={slug}
+        site={siteKey}
+        pageSize={PAGE_SIZE}
+        sectionTitle={sectionTitle}
+        initialItems={initialItems}
+        {...listProps}
+      />
+    </main>
   );
 }
