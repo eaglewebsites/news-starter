@@ -1,7 +1,9 @@
+// components/CategoryLoadMore.js
 "use client";
 
 import { useMemo, useRef, useState } from "react";
 import CategoryCard from "@/components/CategoryCard";
+import { getApiBase, NO_STORE } from "@/lib/api-base";
 
 export default function CategoryLoadMore({
   slug,
@@ -17,10 +19,7 @@ export default function CategoryLoadMore({
   const [hasMore, setHasMore] = useState(true);
 
   const seenRef = useRef(new Set(initialIds));
-  const BASE = useMemo(
-    () => (process.env.NEXT_PUBLIC_EAGLE_API_BASE || "").replace(/\/+$/, ""),
-    []
-  );
+  const BASE = useMemo(() => getApiBase(), []);
 
   async function handleLoadMore() {
     if (loading || !hasMore) return;
@@ -47,7 +46,7 @@ export default function CategoryLoadMore({
           `&limit=${pageSize}` +
           `&offset=${nextOffset}`;
 
-        const res = await fetch(url, { cache: "no-store" });
+        const res = await fetch(url, NO_STORE);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 

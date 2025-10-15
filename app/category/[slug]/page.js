@@ -2,9 +2,9 @@
 
 import CategoryListWithLoadMore from "@/components/CategoryListWithLoadMore";
 import { getCurrentSiteKey } from "@/lib/site-detection";
+import { getApiBase, NO_STORE } from "@/lib/api-base";
 
-/* ------------------------ helpers (local to this file) ----------------------- */
-
+/* helpers */
 function root(obj) {
   return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
 }
@@ -16,7 +16,6 @@ function pick(obj, paths = []) {
   }
   return undefined;
 }
-
 function toPlainText(htmlLike) {
   if (!htmlLike || typeof htmlLike !== "string") return "";
   const text = htmlLike
@@ -27,7 +26,6 @@ function toPlainText(htmlLike) {
     .trim();
   return text;
 }
-
 function makeSnippetFromPost(post, maxLen = 180) {
   const blocksJson = pick(post, ["blocks"]);
   if (blocksJson && typeof blocksJson === "string") {
@@ -45,16 +43,11 @@ function makeSnippetFromPost(post, maxLen = 180) {
   if (!text) return "";
   return text.length > maxLen ? text.slice(0, maxLen - 1).trimEnd() + "…" : text;
 }
-
 function titleCase(s = "") {
   return s
     .split(/[-_ ]+/)
     .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
     .join(" ");
-}
-
-function getApiBase() {
-  return process.env.EAGLE_BASE_API?.replace(/\/+$/, "") || "https://api.eaglewebservices.com/v3";
 }
 
 async function fetchCategoryPage({ slug, site, limit = 24, offset = 0 }) {
@@ -71,7 +64,7 @@ async function fetchCategoryPage({ slug, site, limit = 24, offset = 0 }) {
   const url = `${BASE}/posts?${qs.toString()}`;
   console.log("[category][fetch]", url);
 
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, NO_STORE);
   if (!res.ok) throw new Error(`[category] ${res.status} ${res.statusText}`);
   const data = await res.json();
 
@@ -82,11 +75,14 @@ async function fetchCategoryPage({ slug, site, limit = 24, offset = 0 }) {
     return { ...item, _snippet };
   });
 
-  console.log("[category][result]", slug, "→", `${withSnippets.length} items (limit=${limit}, offset=${offset}, site=${site || "sandhills"})`);
+  console.log(
+    "[category][result]",
+    slug,
+    "→",
+    `${withSnippets.length} items (limit=${limit}, offset=${offset}, site=${site || "sandhills"})`
+  );
   return withSnippets;
 }
-
-/* --------------------------------- page ------------------------------------- */
 
 export const dynamic = "force-dynamic";
 
@@ -106,14 +102,13 @@ export default async function CategoryPage({ params }) {
     initialItems = [];
   }
 
-  // Turn on Filter + Search for obits
   const isObits = /obit/i.test(String(slug || ""));
   const listProps = isObits
     ? {
         showControls: true,
         searchPlaceholder: "Search obituaries…",
         categoryLabel: "Filter",
-        noCropImages: true, // avoid cropping memorial photos
+        noCropImages: true,
       }
     : {};
 
