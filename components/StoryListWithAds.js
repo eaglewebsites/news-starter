@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import SafeLink from "@/components/SafeLink";
 
 /* ------------------------------ small helpers ------------------------------ */
 
@@ -336,11 +336,11 @@ export default function StoryListWithAds({
                   const id =
                     pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
 
-                  const alt = `${computedAltPrefix}${title}`;
+                  const alt = `${(altPrefix !== undefined ? altPrefix : (autoObits ? "Obituary: " : ""))}${title}`;
 
                   return (
                     <li key={(post.id || post.slug || href || idx) + "::row"} className="py-4">
-                      <Link
+                      <SafeLink
                         href={href}
                         className="group flex items-start gap-4 md:gap-5 outline-none"
                       >
@@ -367,7 +367,7 @@ export default function StoryListWithAds({
                             className={[
                               "font-bold text-[20px] leading-[1] text-black",
                               "group-hover:underline",
-                              focusUnderline ? "group-focus-visible:underline" : "",
+                              (focusUnderline ? "group-focus-visible:underline" : ""),
                             ].join(" ").trim()}
                           >
                             {title}
@@ -387,7 +387,7 @@ export default function StoryListWithAds({
                             {snippet}
                           </p>
                         </div>
-                      </Link>
+                      </SafeLink>
                     </li>
                   );
                 })}
