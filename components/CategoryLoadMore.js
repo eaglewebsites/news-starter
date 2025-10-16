@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getApiBase } from "@/lib/api-base";
 
 /* ------------------------------ small helpers ------------------------------ */
 
@@ -277,10 +278,14 @@ export default function CategoryLoadMore({
     "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]";
   const thumbBox = thumbClass || defaultThumbBox;
 
-  const BASE = useMemo(
-    () => (process.env.NEXT_PUBLIC_EAGLE_BASE_API || process.env.NEXT_PUBLIC_EAGLE_API_BASE || "").replace(/\/+$/, ""),
-    []
-  );
+  // ✅ Use only the new helper; no legacy envs.
+  const BASE = useMemo(() => {
+    try {
+      return getApiBase().replace(/\/+$/, "");
+    } catch {
+      return "";
+    }
+  }, []);
 
   // Seed dedupe with what’s already rendered above
   useEffect(() => {
