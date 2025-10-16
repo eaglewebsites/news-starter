@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import SafeLink from "@/components/SafeLink";
 
 /* ------------------------------ small helpers ------------------------------ */
 
@@ -16,19 +16,6 @@ function pick(obj, paths = []) {
     if (v != null && v !== "") return v;
   }
   return undefined;
-}
-
-/** Normalize &nbsp; variants and scrub stray "/>" artifacts in plain text snippets */
-function sanitizeSnippet(s = "") {
-  let out = String(s)
-    .replace(/&amp;nbsp;/gi, " ")
-    .replace(/&(?:nbsp|#160);/gi, " ")
-    .replace(/\u00a0/g, " ");
-  // remove stray "/>" that are not part of an HTML tag
-  out = out.replace(/(^|[^<])\/>/g, "$1");
-  // collapse repeating spaces
-  out = out.replace(/[ \t]{2,}/g, " ").trim();
-  return out;
 }
 
 function deriveHref(post) {
@@ -345,17 +332,15 @@ export default function StoryListWithAds({
                   const updated =
                     pick(post, ["updated", "updated_at", "modified", "date", "published_at"]) || null;
 
-                  const rawSnippet = raw._snippet || "";
-                  const snippet = sanitizeSnippet(rawSnippet);
-
+                  const snippet = raw._snippet || "";
                   const id =
                     pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
 
-                  const alt = `${(autoObits ? "Obituary: " : "")}${title}`;
+                  const alt = `${computedAltPrefix}${title}`;
 
                   return (
                     <li key={(post.id || post.slug || href || idx) + "::row"} className="py-4">
-                      <Link
+                      <SafeLink
                         href={href}
                         className="group flex items-start gap-4 md:gap-5 outline-none"
                       >
@@ -394,7 +379,7 @@ export default function StoryListWithAds({
 
                           <p
                             className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
-                            data-snipsrc={rawSnippet ? "server" : "none"}
+                            data-snipsrc={snippet ? "server" : "none"}
                             data-snippetlen={snippet ? snippet.length : 0}
                             data-postid={id}
                             title={snippet || ""}
@@ -402,7 +387,7 @@ export default function StoryListWithAds({
                             {snippet}
                           </p>
                         </div>
-                      </Link>
+                      </SafeLink>
                     </li>
                   );
                 })}
@@ -437,4 +422,113 @@ export default function StoryListWithAds({
       </div>
     </section>
   );
+}
+
+/** Helpers: derive slug, slugify title, and construct ?orig= fallback */
+function deriveSlugFromLinks(p) {
+  const link =
+    p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
+  if (typeof link !== "string" || !link) return "";
+  try {
+    const u = new URL(link);
+    const idx = u.pathname.toLowerCase().indexOf("/posts/");
+    if (idx >= 0) {
+      const rest = u.pathname.slice(idx + "/posts/".length);
+      const seg = rest.split("/").filter(Boolean)[0];
+      if (seg) return decodeURIComponent(seg);
+    }
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length > 0) return decodeURIComponent(parts[parts.length - 1]);
+  } catch {
+    const path = String(link || "").trim();
+    const idx2 = path.toLowerCase().indexOf("/posts/");
+    if (idx2 >= 0) {
+      const rest = path.slice(idx2 + "/posts/".length);
+      const seg = rest.split("/").filter(Boolean)[0];
+      if (seg) return decodeURIComponent(seg);
+    }
+    const parts = path.split("/").filter(Boolean);
+    if (parts.length > 0) return decodeURIComponent(parts[parts.length - 1]);
+  }
+  return "";
+}
+
+function slugifyTitle(title) {
+  if (!title) return "";
+  return String(title)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function getMarketOrigin(siteKey) {
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_ORIGIN;
+  if (fromEnv && /^https?:\/\//i.test(fromEnv)) return fromEnv.replace(/\/+$/, "");
+  const map = {
+    sandhills: "https://sandhillspost.com",
+    salina: "https://salinapost.com",
+    greatbend: "https://greatbendpost.com",
+  };
+  const origin = map[(siteKey || "").toLowerCase()] || "https://sandhillspost.com";
+  return origin.replace(/\/+$/, "");
+}
+
+function buildExternalUrl(p, siteKey) {
+  const link =
+    p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
+  if (typeof link === "string" && /^https?:\/\//i.test(link)) return link;
+
+  const explicitSlug = p.slug || p.post_slug || p.seo_slug;
+  const derivedSlug  = deriveSlugFromLinks(p);
+  const titleSlug    = slugifyTitle(p.title || p.post_title);
+  const id           = p.id || p.post_id || p.uuid || p.guid;
+
+  const slugOrId = explicitSlug || derivedSlug || titleSlug || id;
+  if (!slugOrId) return "";
+
+  const origin = getMarketOrigin(siteKey);
+  return `${origin}/posts/${encodeURIComponent(slugOrId)}`;
+}
+
+function normalizePostInternal(p, siteKey) {
+  const explicitSlug = p.slug || p.post_slug || p.seo_slug;
+  const derivedSlug  = deriveSlugFromLinks(p);
+  const titleSlug    = slugifyTitle(p.title || p.post_title);
+  const id           = p.id || p.post_id || p.uuid || p.guid;
+
+  const base =
+    explicitSlug ? `/posts/${encodeURIComponent(explicitSlug)}`
+    : derivedSlug ? `/posts/${encodeURIComponent(derivedSlug)}`
+    : titleSlug   ? `/posts/${encodeURIComponent(titleSlug)}`
+    : id          ? `/posts/${encodeURIComponent(id)}`
+    : "#";
+
+  if (base === "#") {
+    return {
+      id: p.id ?? explicitSlug ?? derivedSlug ?? titleSlug ?? ("tmp_" + Math.random().toString(36).slice(2)),
+      href: base,
+      title: p.title ?? p.post_title ?? "Untitled",
+      image: p.image ?? p.featured_image ?? p.image_url ?? null,
+      updated: p.updated ?? p.updated_at ?? p.published_at ?? null,
+    };
+  }
+
+  const orig = buildExternalUrl(p, siteKey);
+  const href = orig ? `${base}?orig=${encodeURIComponent(orig)}` : base;
+
+  return {
+    id: p.id ?? explicitSlug ?? derivedSlug ?? titleSlug ?? ("tmp_" + Math.random().toString(36).slice(2)),
+    href,
+    title: p.title ?? p.post_title ?? "Untitled",
+    image: p.image ?? p.featured_image ?? p.image_url ?? null,
+    updated: p.updated ?? p.updated_at ?? p.published_at ?? null,
+  };
+}
+
+function capitalize(s) {
+  return (s ?? "").slice(0, 1).toUpperCase() + (s ?? "").slice(1);
 }
