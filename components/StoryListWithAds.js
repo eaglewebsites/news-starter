@@ -2,7 +2,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import SafeLink from "@/components/SafeLink";
+import Link from "next/link";
 
 /* ------------------------------ small helpers ------------------------------ */
 
@@ -16,6 +16,19 @@ function pick(obj, paths = []) {
     if (v != null && v !== "") return v;
   }
   return undefined;
+}
+
+/** Normalize &nbsp; variants and scrub stray "/>" artifacts in plain text snippets */
+function sanitizeSnippet(s = "") {
+  let out = String(s)
+    .replace(/&amp;nbsp;/gi, " ")
+    .replace(/&(?:nbsp|#160);/gi, " ")
+    .replace(/\u00a0/g, " ");
+  // remove stray "/>" that are not part of an HTML tag
+  out = out.replace(/(^|[^<])\/>/g, "$1");
+  // collapse repeating spaces
+  out = out.replace(/[ \t]{2,}/g, " ").trim();
+  return out;
 }
 
 function deriveHref(post) {
@@ -332,15 +345,17 @@ export default function StoryListWithAds({
                   const updated =
                     pick(post, ["updated", "updated_at", "modified", "date", "published_at"]) || null;
 
-                  const snippet = raw._snippet || "";
+                  const rawSnippet = raw._snippet || "";
+                  const snippet = sanitizeSnippet(rawSnippet);
+
                   const id =
                     pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
 
-                  const alt = `${(altPrefix !== undefined ? altPrefix : (autoObits ? "Obituary: " : ""))}${title}`;
+                  const alt = `${(autoObits ? "Obituary: " : "")}${title}`;
 
                   return (
                     <li key={(post.id || post.slug || href || idx) + "::row"} className="py-4">
-                      <SafeLink
+                      <Link
                         href={href}
                         className="group flex items-start gap-4 md:gap-5 outline-none"
                       >
@@ -367,7 +382,7 @@ export default function StoryListWithAds({
                             className={[
                               "font-bold text-[20px] leading-[1] text-black",
                               "group-hover:underline",
-                              (focusUnderline ? "group-focus-visible:underline" : ""),
+                              focusUnderline ? "group-focus-visible:underline" : "",
                             ].join(" ").trim()}
                           >
                             {title}
@@ -379,7 +394,7 @@ export default function StoryListWithAds({
 
                           <p
                             className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
-                            data-snipsrc={snippet ? "server" : "none"}
+                            data-snipsrc={rawSnippet ? "server" : "none"}
                             data-snippetlen={snippet ? snippet.length : 0}
                             data-postid={id}
                             title={snippet || ""}
@@ -387,7 +402,7 @@ export default function StoryListWithAds({
                             {snippet}
                           </p>
                         </div>
-                      </SafeLink>
+                      </Link>
                     </li>
                   );
                 })}

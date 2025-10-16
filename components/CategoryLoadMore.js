@@ -1,127 +1,162 @@
 // components/CategoryLoadMore.js
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import CategoryCard from "@/components/CategoryCard";
-import { getApiBase, NO_STORE } from "@/lib/api-base";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-export default function CategoryLoadMore({
-  slug,
-  siteKey,
-  initialOffset = 0,
-  initialIds = [],
-  pageSize = 24,
-}) {
-  const [items, setItems] = useState([]);
-  const [offset, setOffset] = useState(initialOffset);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [hasMore, setHasMore] = useState(true);
+/* ------------------------------ small helpers ------------------------------ */
 
-  const seenRef = useRef(new Set(initialIds));
-  const BASE = useMemo(() => getApiBase(), []);
+function root(obj) {
+  return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
+}
+function pick(obj, paths = []) {
+  const o = root(obj);
+  for (const p of paths) {
+    const v = p.split(".").reduce((acc, k) => (acc && acc[k] != null ? acc[k] : undefined), o);
+    if (v != null && v !== "") return v;
+  }
+  return undefined;
+}
 
-  async function handleLoadMore() {
-    if (loading || !hasMore) return;
-    if (!BASE) {
-      setError("Public API base is not configured.");
-      return;
-    }
+/** Normalize &nbsp; variants and scrub stray "/>" artifacts in plain text snippets */
+function sanitizeSnippet(s = "") {
+  let out = String(s)
+    .replace(/&amp;nbsp;/gi, " ")
+    .replace(/&(?:nbsp|#160);/gi, " ")
+    .replace(/\u00a0/g, " ");
+  // remove stray "/>" or similar
+  out = out.replace(/(^|[^<])\/>/g, "$1");
+  // remove a few common symbol “bullets” that sneak in from broken markup
+  out = out.replace(/^[\s"“”‘’'(){}\[\]<>«»‹›▪•▶▸►›]+/u, "");
+  // collapse repeating spaces
+  out = out.replace(/[ \t]{2,}/g, " ").trim();
+  return out;
+}
 
-    setLoading(true);
-    setError("");
+function stripHtmlToText(html = "") {
+  return sanitizeSnippet(
+    String(html)
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-    let nextOffset = offset;
-    let appended = 0;
-    const MAX_RETRIES = 2;
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-    try {
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        const url =
-          `${BASE}/posts?` +
-          `categories=${encodeURIComponent(slug)}` +
-          `&public=true` +
-          `&sites=${encodeURIComponent(siteKey)}` +
-          `&status=published` +
-          `&limit=${pageSize}` +
-          `&offset=${nextOffset}`;
+/**
+ * Remove one or more leading repetitions of the title from the snippet,
+ * even with quotes/symbols/dashes in between. Then trim any dangling quotes/symbols.
+ */
+function stripLeadingTitle(text, title) {
+  if (!text || !title) return text;
+  let out = text.trimStart();
+  const esc = escapeRegExp(String(title).trim());
 
-        const res = await fetch(url, NO_STORE);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+  // optional whitespace/punct/symbols, then the title, then a boundary
+  const reOne = new RegExp(String.raw`^[\s\p{P}\p{S}]*${esc}(?:(?=[\s\p{P}\p{S}])|$)`, "iu");
 
-        const arr = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.items) ? data.items
-          : Array.isArray(data?.results) ? data.results
-          : Array.isArray(data?.posts) ? data.posts
-          : Array.isArray(data?.data?.items) ? data.data.items
-          : Array.isArray(data?.data) ? data.data
-          : [];
-
-        const normalized = arr.map((p) => normalizePostInternal(p, siteKey));
-
-        const unseen = normalized.filter((p) => {
-          const id = p.id || p.slug || p.href || p.title;
-          return id && !seenRef.current.has(id);
-        });
-
-        for (const p of normalized) {
-          const id = p.id || p.slug || p.href || p.title;
-          if (id) seenRef.current.add(id);
-        }
-
-        if (unseen.length > 0) {
-          setItems((prev) => [...prev, ...unseen]);
-          appended += unseen.length;
-          nextOffset += normalized.length;
-          break;
-        }
-
-        nextOffset += pageSize;
-      }
-
-      setOffset(nextOffset);
-      if (appended < pageSize) setHasMore(false);
-    } catch (e) {
-      setError("Sorry, couldn’t load more stories.");
-    } finally {
-      setLoading(false);
-    }
+  for (let i = 0; i < 4; i++) {
+    const next = out.replace(reOne, "").trimStart();
+    if (next === out) break;
+    out = next;
   }
 
-  return (
-    <div className="mt-8">
-      {items.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {items.map((post) => (
-            <div key={post.id}>
-              <CategoryCard post={post} />
-            </div>
-          ))}
-        </div>
-      )}
+  // After removing titles, clear leftover leading quotes/symbols/dashes and stray '>'s
+  out = out.replace(/^[\s"“”‘’'(){}\[\]<>«»‹›:;.,\-–—/\\|•▪▶▸►›>]+/u, "").trimStart();
 
-      <div className="mt-6 flex items-center justify-center">
-        {error && <span className="mr-4 text-red-600">{error}</span>}
-        {hasMore ? (
-          <button
-            onClick={handleLoadMore}
-            disabled={loading}
-            className="px-5 py-3 rounded-2xl shadow hover:shadow-md transition text-sm font-medium bg-black text-white disabled:opacity-60"
-            aria-label={`Load more ${slug} news`}
-          >
-            {loading ? "Loading…" : `Load More ${capitalize(slug)} News`}
-          </button>
-        ) : (
-          <span className="text-sm opacity-70">No more stories.</span>
-        )}
-      </div>
-    </div>
+  return out;
+}
+
+/** Remove all <figcaption>…</figcaption> blocks */
+function stripFigcaptions(html = "") {
+  return String(html).replace(/<figcaption[\s\S]*?<\/figcaption>/gi, " ");
+}
+/** Remove entire <figure>…</figure> blocks (img + caption) */
+function stripFigures(html = "") {
+  return String(html).replace(/<figure[\s\S]*?<\/figure>/gi, " ");
+}
+
+/** Build a snippet from various fields, trim, sanitize; obits strip figure/captions first. */
+function makeSnippet(p, maxLen = 240, titleForStrip = "", isObits = false) {
+  let raw =
+    p.snippet ?? p._snippet ?? p.excerpt ?? p.dek ?? p.summary ?? p.description ?? p.teaser ??
+    p.preview ?? p.subtitle ?? p.subhead ?? p.sub_head ??
+    p.body ?? p.body_html ?? p.content_html ?? p.html ?? p.article_html ?? p.content ?? "";
+
+  if (isObits) {
+    raw = stripFigures(raw);
+    raw = stripFigcaptions(raw);
+  }
+
+  let text = stripHtmlToText(raw);
+  if (!text) return "";
+  text = stripLeadingTitle(text, titleForStrip);
+  text = sanitizeSnippet(text);
+  text = text.replace(/^[>"“”‘’']+/, "").trimStart();
+
+  if (text.length <= maxLen) return text;
+  const cut = text.slice(0, maxLen);
+  return cut.replace(/\s+\S*$/, "") + "…";
+}
+
+/** Build the internal app href. Prefer ID; fall back to slug/derived/title. Never append ?orig. */
+function internalHrefForApp(p) {
+  const id = p.id || p.post_id || p.uuid || p.guid;
+  if (id) return `/posts/${encodeURIComponent(String(id))}`;
+
+  const slug = p.slug || p.post_slug || p.seo_slug || "";
+  if (slug) return `/posts/${encodeURIComponent(String(slug))}`;
+
+  const derived = deriveSlugFromLinks(p);
+  if (derived) return `/posts/${encodeURIComponent(derived)}`;
+
+  const titleSlug = slugifyTitle(p.title || p.post_title);
+  if (titleSlug) return `/posts/${encodeURIComponent(titleSlug)}`;
+
+  return "#";
+}
+
+function deriveHref(post) {
+  // our normalized objects already include a proper href;
+  // but if anything slips through, rebuild it here the same way.
+  return post.href || internalHrefForApp(post);
+}
+
+function deriveImage(post) {
+  return (
+    pick(post, [
+      "featured_image_url",
+      "featured_image",
+      "featuredImage",
+      "image_url",
+      "image",
+      "featured_image_thumbnail",
+      "thumbnail",
+      "thumb",
+      "media.0.url",
+      "photo",
+      "og_image",
+    ]) || null
   );
 }
 
-/** Helpers: derive slug, slugify title, and construct ?orig= fallback */
+function toDate(val) { try { const d = new Date(val); return isNaN(d.getTime()) ? null : d; } catch { return null; } }
+function timeAgo(dateish) {
+  const d = toDate(dateish);
+  if (!d) return "";
+  const diff = Date.now() - d.getTime();
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hrs ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 function deriveSlugFromLinks(p) {
   const link =
     p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
@@ -162,70 +197,311 @@ function slugifyTitle(title) {
     .replace(/-{2,}/g, "-");
 }
 
-function getMarketOrigin(siteKey) {
-  const fromEnv = process.env.NEXT_PUBLIC_SITE_ORIGIN;
-  if (fromEnv && /^https?:\/\//i.test(fromEnv)) return fromEnv.replace(/\/+$/, "");
-  const map = {
-    sandhills: "https://sandhillspost.com",
-    salina: "https://salinapost.com",
-    greatbend: "https://greatbendpost.com",
-  };
-  const origin = map[(siteKey || "").toLowerCase()] || "https://sandhillspost.com";
-  return origin.replace(/\/+$/, "");
-}
-
-function buildExternalUrl(p, siteKey) {
-  const link =
+function stableId(p) {
+  const id = p.id || p.post_id || p.uuid || p.guid;
+  if (id) return String(id);
+  const slug = p.slug || p.post_slug || p.seo_slug;
+  if (slug) return String(slug);
+  const href =
     p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
-  if (typeof link === "string" && /^https?:\/\//i.test(link)) return link;
-
-  const explicitSlug = p.slug || p.post_slug || p.seo_slug;
-  const derivedSlug  = deriveSlugFromLinks(p);
-  const titleSlug    = slugifyTitle(p.title || p.post_title);
-  const id           = p.id || p.post_id || p.uuid || p.guid;
-
-  const slugOrId = explicitSlug || derivedSlug || titleSlug || id;
-  if (!slugOrId) return "";
-
-  const origin = getMarketOrigin(siteKey);
-  return `${origin}/posts/${encodeURIComponent(slugOrId)}`;
+  if (href) {
+    try {
+      const u = new URL(href, "https://example.com");
+      return `${u.pathname.replace(/\/+$/, "")}` || href;
+    } catch {
+      return href.split("?")[0].split("#")[0] || href;
+    }
+  }
+  return p.title || p.post_title || "untitled";
 }
 
-function normalizePostInternal(p, siteKey) {
-  const explicitSlug = p.slug || p.post_slug || p.seo_slug;
-  const derivedSlug  = deriveSlugFromLinks(p);
-  const titleSlug    = slugifyTitle(p.title || p.post_title);
-  const id           = p.id || p.post_id || p.uuid || p.guid;
-
-  const base =
-    explicitSlug ? `/posts/${encodeURIComponent(explicitSlug)}`
-    : derivedSlug ? `/posts/${encodeURIComponent(derivedSlug)}`
-    : titleSlug   ? `/posts/${encodeURIComponent(titleSlug)}`
-    : id          ? `/posts/${encodeURIComponent(id)}`
-    : "#";
-
-  if (base === "#") {
-    return {
-      id: p.id ?? explicitSlug ?? derivedSlug ?? titleSlug ?? ("tmp_" + Math.random().toString(36).slice(2)),
-      href: base,
-      title: p.title ?? p.post_title ?? "Untitled",
-      image: p.image ?? p.featured_image ?? p.image_url ?? null,
-      updated: p.updated ?? p.updated_at ?? p.published_at ?? null,
-    };
-  }
-
-  const orig = buildExternalUrl(p, siteKey);
-  const href = orig ? `${base}?orig=${encodeURIComponent(orig)}` : base;
+/** Normalize one API item into the row shape we render. */
+function normalizePostInternal(p, siteKey, isObits) {
+  const href = internalHrefForApp(p); // 👈 prefer ID path, no ?orig
+  const titleForStrip = p.title ?? p.post_title ?? "";
+  const snippet = makeSnippet(p, 240, titleForStrip, isObits);
 
   return {
-    id: p.id ?? explicitSlug ?? derivedSlug ?? titleSlug ?? ("tmp_" + Math.random().toString(36).slice(2)),
+    id: stableId(p),
     href,
     title: p.title ?? p.post_title ?? "Untitled",
     image: p.image ?? p.featured_image ?? p.image_url ?? null,
     updated: p.updated ?? p.updated_at ?? p.published_at ?? null,
+    _snippet: snippet,
   };
+}
+
+function arrayFromApi(data) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data.posts)) return data.posts;
+  if (data.data && Array.isArray(data.data.items)) return data.data.items;
+  if (data.data && Array.isArray(data.data)) return data.data;
+  return [];
 }
 
 function capitalize(s) {
   return (s ?? "").slice(0, 1).toUpperCase() + (s ?? "").slice(1);
+}
+
+/* -------------------------------- component -------------------------------- */
+
+export default function CategoryLoadMore({
+  slug,
+  siteKey,
+  initialOffset = 0,
+  initialIds = [], // optional
+  pageSize = 24,
+  /** Pass the SSR items so dedupe knows what's already on screen */
+  seedFromItems = [],
+  /** Match StoryListWithAds props used for thumbnails */
+  noCropImages,
+  thumbClass,
+  focusUnderline = true,
+}) {
+  const [items, setItems] = useState([]);
+  const [offset, setOffset] = useState(initialOffset);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [hasMore, setHasMore] = useState(true);
+
+  const seenRef = useRef(new Set(initialIds));
+  const lastSigRef = useRef(""); // signature of last page fetched to detect repeats
+
+  const isObits = useMemo(() => (slug || "").toLowerCase().includes("obit"), [slug]);
+  const forceNoCrop = noCropImages ?? isObits;
+
+  const defaultThumbBox =
+    "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]";
+  const thumbBox = thumbClass || defaultThumbBox;
+
+  const BASE = useMemo(
+    () => (process.env.NEXT_PUBLIC_EAGLE_BASE_API || process.env.NEXT_PUBLIC_EAGLE_API_BASE || "").replace(/\/+$/, ""),
+    []
+  );
+
+  // Seed dedupe with what’s already rendered above
+  useEffect(() => {
+    try {
+      for (const raw of seedFromItems) {
+        const id = stableId(raw);
+        if (id) seenRef.current.add(id);
+      }
+    } catch {}
+  }, [seedFromItems]);
+
+  function pageSignature(list) {
+    if (!list || !list.length) return "";
+    const first = stableId(list[0]) || "";
+    const last = stableId(list[list.length - 1]) || "";
+    return `${first}__${last}__${list.length}`;
+  }
+
+  async function fetchVariant(nextOffset, variant) {
+    // variant: "offset" | "page"
+    let url;
+    if (variant === "page") {
+      const page = Math.floor(nextOffset / pageSize) + 1;
+      url =
+        `${BASE}/posts?` +
+        `categories=${encodeURIComponent(slug)}` +
+        `&public=true` +
+        `&sites=${encodeURIComponent(siteKey)}` +
+        `&status=published` +
+        `&limit=${pageSize}` +
+        `&page=${page}`;
+    } else {
+      // default: offset
+      url =
+        `${BASE}/posts?` +
+        `categories=${encodeURIComponent(slug)}` +
+        `&public=true` +
+        `&sites=${encodeURIComponent(siteKey)}` +
+        `&status=published` +
+        `&limit=${pageSize}` +
+        `&offset=${nextOffset}`;
+    }
+
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return arrayFromApi(data);
+  }
+
+  async function handleLoadMore() {
+    if (loading || !hasMore) return;
+    if (!BASE) {
+      setError("Public API base is not configured.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    let nextOffset = offset;
+    let appended = 0;
+    const MAX_JUMPS = 3;
+
+    try {
+      attemptLoop: for (let jump = 0; jump <= MAX_JUMPS; jump++) {
+        const variants = ["offset", "page"];
+
+        for (const variant of variants) {
+          let arr = [];
+          try {
+            arr = await fetchVariant(nextOffset, variant);
+          } catch {
+            continue;
+          }
+
+          const normalized = arr.map((p) => normalizePostInternal(p, siteKey, isObits));
+          const sig = pageSignature(normalized);
+
+          if (sig && sig === lastSigRef.current) {
+            continue;
+          }
+
+          const unseen = normalized.filter((p) => {
+            const id = p.id || p.href || p.title;
+            return id && !seenRef.current.has(id);
+          });
+
+          for (const p of normalized) {
+            const id = p.id || p.href || p.title;
+            if (id) seenRef.current.add(id);
+          }
+
+          if (unseen.length > 0) {
+            setItems((prev) => [...prev, ...unseen]);
+            appended += unseen.length;
+            nextOffset += normalized.length;
+            lastSigRef.current = sig;
+            break attemptLoop; // success
+          }
+
+          lastSigRef.current = sig || lastSigRef.current;
+        }
+
+        nextOffset += pageSize; // both variants repeated → jump
+      }
+
+      setOffset(nextOffset);
+      if (appended === 0) setHasMore(false);
+    } catch (e) {
+      setError("Sorry, couldn’t load more stories.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /* ---------------------------------- view ---------------------------------- */
+
+  return (
+    <div className="mt-6">
+      {items.length > 0 && (
+        <ul className="divide-y divide-neutral-200">
+          {items.map((post, idx) => {
+            const href = deriveHref(post);
+            const img = deriveImage(post);
+            const title = pick(post, ["title", "headline"]) || "Untitled";
+            const updated =
+              pick(post, ["updated", "updated_at", "modified", "published", "date", "published_at"]) || null;
+
+            const snippet = sanitizeSnippet(post._snippet || "");
+
+            const id =
+              pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
+
+            const alt = `${(isObits ? "Obituary: " : "")}${title}`;
+
+            return (
+              <li key={(post.id || post.slug || href || idx) + "::more-row"} className="py-4">
+                <a href={href} className="group flex items-start gap-4 md:gap-5 outline-none">
+                  {/* Thumbnail (contain for obits; cover otherwise) */}
+                  {isObits ? (
+                    <div className={`flex items-center justify-center ${thumbClass || "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]"}`}>
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={alt}
+                          className="block max-w-full max-h-full w-auto h-auto"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
+                          No image
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className={thumbClass || "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]"}>
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={alt}
+                          className="absolute inset-0 h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
+                          No image
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <h3
+                      className={[
+                        "font-bold text-[20px] leading-[1] text-black",
+                        "group-hover:underline",
+                        focusUnderline ? "group-focus-visible:underline" : "",
+                      ].join(" ").trim()}
+                    >
+                      {title}
+                    </h3>
+
+                    <div className="mt-1 text-[13px] leading-[1] font-light text-neutral-500">
+                      {updated ? `Updated ${timeAgo(updated)}` : ""}
+                    </div>
+
+                    {snippet ? (
+                      <p
+                        className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
+                        data-snipsrc="client"
+                        data-snippetlen={snippet.length}
+                        data-postid={id}
+                        title={snippet}
+                      >
+                        {snippet}
+                      </p>
+                    ) : null}
+                  </div>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Controls row */}
+      <div className="mt-6 flex items-center justify-center">
+        {error && <span className="mr-4 text-red-600">{error}</span>}
+        {hasMore ? (
+          <button
+            onClick={handleLoadMore}
+            disabled={loading}
+            className="px-5 py-3 rounded-2xl shadow hover:shadow-md transition text-sm font-medium bg-black text-white disabled:opacity-60"
+            aria-label={`Load more ${slug}`}
+          >
+            {loading ? "Loading…" : `Load More ${capitalize(slug)}`}
+          </button>
+        ) : (
+          <span className="text-sm opacity-70">No more stories.</span>
+        )}
+      </div>
+    </div>
+  );
 }

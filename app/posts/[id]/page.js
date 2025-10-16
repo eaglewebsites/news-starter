@@ -15,16 +15,29 @@ function pick(obj, paths = []) {
   }
   return undefined;
 }
+
+/* ------------------------------ sanitizers --------------------------------- */
+function normalizeNbsp(s = "") {
+  return String(s)
+    .replace(/&amp;nbsp;/gi, " ")
+    .replace(/&(?:nbsp|#160);/gi, " ")
+    .replace(/\u00a0/g, " ");
+}
 function sanitizeHtml(html) {
   if (!html || typeof html !== "string") return "";
-  // strip only scripts; keep the publisher’s markup
-  return html.replace(/<script[\s\S]*?<\/script>/gi, "");
+  return normalizeNbsp(html.replace(/<script[\s\S]*?<\/script>/gi, ""));
+}
+/** Remove entire <figure>…</figure> blocks (img + caption) — for obits to avoid dup image */
+function stripFigures(html = "") {
+  return String(html).replace(/<figure[\s\S]*?<\/figure>/gi, " ");
 }
 function stripHtmlToText(html = "") {
-  return String(html)
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+  return normalizeNbsp(
+    String(html)
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -45,9 +58,7 @@ function fmtDateTime(dLike) {
     const date = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     return `${date} · ${time}`;
-  } catch {
-    return "";
-  }
+  } catch { return ""; }
 }
 function readingTime(html) {
   const words = stripHtmlToText(html).split(/\s+/).filter(Boolean).length;
@@ -83,10 +94,7 @@ async function fetchPostByIdOrSlug(idOrSlug, siteKey = "sandhills") {
   let lastErr = null;
   for (const url of tries) {
     const res = await fetch(url, NO_STORE);
-    if (!res.ok) {
-      lastErr = new Error(`[post] ${res.status} ${res.statusText}`);
-      continue;
-    }
+    if (!res.ok) { lastErr = new Error(`[post] ${res.status} ${res.statusText}`); continue; }
     const data = await res.json();
 
     if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -113,21 +121,10 @@ async function fetchPostByIdOrSlug(idOrSlug, siteKey = "sandhills") {
       if (exact) return exact;
     }
   }
-  throw lastErr || new Error("[post] Not Found");
+  throw lastErr || new Error("[post] Not Found]");
 }
 
 export const dynamic = "force-dynamic";
-
-/* ------------------------------- hero handling ------------------------------- */
-function bodyAlreadyHasHero(bodyHtml, featuredUrl) {
-  if (!bodyHtml) return false;
-  const head = bodyHtml.slice(0, 2000);
-  const hasImgTagNearTop = /<(figure|p)[^>]*>\s*<img[\s\S]*?>/i.test(head) || /<img[\s\S]*?>/i.test(head);
-  const repeatsFeatured = featuredUrl
-    ? new RegExp(String(featuredUrl).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(head)
-    : false;
-  return hasImgTagNearTop || repeatsFeatured;
-}
 
 /* --------------------------------- page --------------------------------- */
 export default async function PostPage({ params }) {
@@ -161,59 +158,68 @@ export default async function PostPage({ params }) {
 
   /* ----------------------------- derived fields ----------------------------- */
   const title = pick(post, ["title", "headline"]) || "Untitled";
+
   const featured =
     pick(post, ["featured_image_url", "featured_image", "image", "photo", "og_image"]) || null;
 
-  const imageAlt =
-    pick(post, ["image_alt", "featured_image_alt", "title"]) || title;
+  // Alt + caption candidates
+  const imgAlt =
+    pick(post, ["image_alt", "featured_image_alt", "imageAlt"]) ||
+    title ||
+    "";
+  const imgCaption =
+    pick(post, ["image_caption", "caption", "photo_credit", "featured_media.caption"]) || "";
 
-  const imageCaption =
-    pick(post, [
-      "image_caption",
-      "caption",
-      "photo_credit",
-      "featured_media.caption",
-      "meta.image_caption",
-    ]) || "";
+  // raw HTML body
+  let bodyRaw =
+    pick(post, ["body", "content", "html", "article_html", "body_html", "content_html"]) || "";
 
-  const bodyHtml = sanitizeHtml(
-    pick(post, ["body", "content", "html", "article_html", "body_html", "content_html"]) || ""
-  );
-
+  // obits detection from categories/tags
   const rawCats = pick(post, ["categories", "category", "tags"]) || [];
   const cats = Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [];
   const catName =
     (typeof cats[0] === "string" && cats[0]) ||
     (cats[0] && (cats[0].name || cats[0].title)) ||
     "";
+  const isObits = String(catName || "").toLowerCase().includes("obit");
+
+  // For obits, strip <figure>…</figure> blocks from body (to avoid duplicate image/caption),
+  // then sanitize and normalize &nbsp; etc.
+  const bodyHtml = sanitizeHtml(isObits ? stripFigures(bodyRaw) : bodyRaw);
 
   const published =
     pick(post, ["published", "published_at", "date", "created_at"]) ||
     pick(post, ["updated", "updated_at", "modified"]) ||
     null;
 
-  // meta parts for one-line row
-  const dateStr = published ? fmtDateTime(published) : "";
-  const readStr = bodyHtml ? readingTime(bodyHtml) : "";
-
-  const shouldRenderStandaloneHero = featured && !bodyAlreadyHasHero(bodyHtml, featured);
+  const metaPieces = [];
+  if (catName) metaPieces.push(catName);
+  if (published) metaPieces.push(fmtDateTime(published)); // date + time
+  if (bodyHtml) metaPieces.push(readingTime(bodyHtml));
+  const metaLine = metaPieces.join(" • ");
 
   /* ---------------------------------- view ---------------------------------- */
   return (
     <main className="mx-auto w-full max-w-4xl px-4">
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="not-prose pt-6">
-        <ol className="flex items-center gap-0 text-sm">
+        <ol className="flex items-center gap-2 text-sm">
           <li>
-            <a href="/" className="before:content-[''] hover:underline">Home</a>
+            <a
+              href="/"
+              className="before:content-[''] !text-sky-700 hover:!text-sky-800 hover:underline"
+            >
+              Home
+            </a>
           </li>
+
           {catName ? (
             <>
-              <li aria-hidden="true" className="mx-2 select-none text-neutral-500">›</li>
+              <li aria-hidden="true" className="select-none text-neutral-500">›</li>
               <li>
                 <a
                   href={`/category/${encodeURIComponent(slugify(catName))}`}
-                  className="before:content-[''] hover:underline"
+                  className="before:content-[''] !text-sky-700 hover:!text-sky-800 hover:underline"
                 >
                   {String(catName).toLowerCase()}
                 </a>
@@ -226,51 +232,47 @@ export default async function PostPage({ params }) {
       {/* Title */}
       <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-black">{title}</h1>
 
-      {/* Meta row: [STATE button] • date · time • 2 min read */}
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-neutral-600 not-prose">
-        {catName ? (
-          <a
-            href={`/category/${encodeURIComponent(slugify(catName))}`}
-            className="inline-block rounded-full border border-neutral-200 bg-white px-3 py-1 text-[11px] font-semibold tracking-wide text-neutral-700 hover:bg-neutral-50 uppercase"
-          >
-            {String(catName).toUpperCase()}
-          </a>
-        ) : null}
+      {/* Meta line */}
+      {metaLine ? (
+        <div className="mt-2 text-sm text-neutral-600">{metaLine}</div>
+      ) : null}
 
-        {dateStr && catName ? <span className="text-neutral-400">•</span> : null}
-        {dateStr ? <span>{dateStr}</span> : null}
-
-        {readStr && (dateStr || catName) ? <span className="text-neutral-400">•</span> : null}
-        {readStr ? <span>{readStr}</span> : null}
-      </div>
-
-      {/* Standalone hero (only if body doesn't already include one) */}
-      {shouldRenderStandaloneHero ? (
-        <figure className="mt-6">
-          <img src={featured} alt={imageAlt} className="w-full h-auto rounded" />
-          {imageCaption ? (
-            <figcaption className="mt-2 text-xs text-neutral-600">
-              {imageCaption}
+      {/* Featured image — centered, smaller on md+; NO rounded corners */}
+      {featured ? (
+        <figure className="py-6">
+          <img
+            src={featured}
+            alt={imgAlt}
+            className="mx-auto w-full sm:w-full md:w-1/2"
+          />
+          {imgCaption ? (
+            <figcaption className="text-center italic text-gray-700 text-sm pt-2">
+              {imgCaption}
             </figcaption>
           ) : null}
         </figure>
       ) : null}
 
-      {/* Body — FORCE spacing even if a global CSS reset set p { margin: 0 } */}
+      {/* Body — spacing guaranteed via a plain <style> block below; images have no radius */}
       <article
-        className="
-          prose prose-neutral max-w-none mt-8
-          prose-img:rounded
-          [&_p]:!my-5
-          [&_ul]:!my-5 [&_ol]:!my-5
-          [&_li]:!my-1.5
-          [&_h2]:!mt-10 [&_h2]:!mb-3
-          [&_h3]:!mt-8  [&_h3]:!mb-2
-        "
+        data-rich
+        className="mt-2 max-w-none text-[17px] leading-[1.75]"
         dangerouslySetInnerHTML={{ __html: bodyHtml }}
       />
 
       <ShareRow className="mt-10" />
+
+      {/* Plain style tag (safe in Server Component) — also remove any image rounding */}
+      <style>{`
+        article[data-rich] p { margin: 1.25rem 0; }
+        article[data-rich] ul,
+        article[data-rich] ol { margin: 1.25rem 0; padding-left: 1.25rem; }
+        article[data-rich] li { margin: 0.25rem 0; }
+        article[data-rich] h2 { margin-top: 2rem; margin-bottom: 0.75rem; }
+        article[data-rich] h3 { margin-top: 1.5rem; margin-bottom: 0.5rem; }
+        article[data-rich] img { border-radius: 0; max-width: 100%; height: auto; }
+        figure img { border-radius: 0; }
+      `}</style>
     </main>
   );
 }
