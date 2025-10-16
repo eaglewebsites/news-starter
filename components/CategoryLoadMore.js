@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getApiBase } from "@/lib/api-base";
+import { getSiteKeySync } from "@/lib/site-detection";
 
 /* ------------------------------ small helpers ------------------------------ */
 
@@ -251,9 +251,9 @@ function capitalize(s) {
 
 export default function CategoryLoadMore({
   slug,
-  siteKey,
+  siteKey,                 // optional; if omitted we detect from hostname
   initialOffset = 0,
-  initialIds = [], // optional
+  initialIds = [],         // optional
   pageSize = 24,
   /** Pass the SSR items so dedupe knows what's already on screen */
   seedFromItems = [],
@@ -271,6 +271,9 @@ export default function CategoryLoadMore({
   const seenRef = useRef(new Set(initialIds));
   const lastSigRef = useRef(""); // signature of last page fetched to detect repeats
 
+  // If a prop wasn't provided, detect on the client
+  const siteKeyLocal = siteKey || getSiteKeySync();
+
   const isObits = useMemo(() => (slug || "").toLowerCase().includes("obit"), [slug]);
   const forceNoCrop = noCropImages ?? isObits;
 
@@ -278,14 +281,10 @@ export default function CategoryLoadMore({
     "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]";
   const thumbBox = thumbClass || defaultThumbBox;
 
-  // ✅ Use only the new helper; no legacy envs.
-  const BASE = useMemo(() => {
-    try {
-      return getApiBase().replace(/\/+$/, "");
-    } catch {
-      return "";
-    }
-  }, []);
+  const BASE = useMemo(
+    () => (process.env.NEXT_PUBLIC_EAGLE_BASE_API || "").replace(/\/+$/, ""),
+    []
+  );
 
   // Seed dedupe with what’s already rendered above
   useEffect(() => {
@@ -313,7 +312,7 @@ export default function CategoryLoadMore({
         `${BASE}/posts?` +
         `categories=${encodeURIComponent(slug)}` +
         `&public=true` +
-        `&sites=${encodeURIComponent(siteKey)}` +
+        `&sites=${encodeURIComponent(siteKeyLocal)}` +
         `&status=published` +
         `&limit=${pageSize}` +
         `&page=${page}`;
@@ -323,7 +322,7 @@ export default function CategoryLoadMore({
         `${BASE}/posts?` +
         `categories=${encodeURIComponent(slug)}` +
         `&public=true` +
-        `&sites=${encodeURIComponent(siteKey)}` +
+        `&sites=${encodeURIComponent(siteKeyLocal)}` +
         `&status=published` +
         `&limit=${pageSize}` +
         `&offset=${nextOffset}`;
@@ -361,7 +360,7 @@ export default function CategoryLoadMore({
             continue;
           }
 
-          const normalized = arr.map((p) => normalizePostInternal(p, siteKey, isObits));
+          const normalized = arr.map((p) => normalizePostInternal(p, siteKeyLocal, isObits));
           const sig = pageSignature(normalized);
 
           if (sig && sig === lastSigRef.current) {

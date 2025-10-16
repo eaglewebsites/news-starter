@@ -1,7 +1,7 @@
 // app/posts/[id]/page.js
-import { headers } from "next/headers";
 import ShareRow from "@/components/ShareRow";
 import { getApiBase, NO_STORE } from "@/lib/api-base";
+import { getCurrentSiteKey } from "@/lib/site-detection";
 
 /* ------------------------- tiny pick/unwrap helpers ------------------------- */
 function root(obj) {
@@ -16,20 +16,12 @@ function pick(obj, paths = []) {
   return undefined;
 }
 
-/* ------------------------------ sanitizers --------------------------------- */
+/* ----------------------------- text utilities ------------------------------ */
 function normalizeNbsp(s = "") {
   return String(s)
     .replace(/&amp;nbsp;/gi, " ")
     .replace(/&(?:nbsp|#160);/gi, " ")
     .replace(/\u00a0/g, " ");
-}
-function sanitizeHtml(html) {
-  if (!html || typeof html !== "string") return "";
-  return normalizeNbsp(html.replace(/<script[\s\S]*?<\/script>/gi, ""));
-}
-/** Remove entire <figure>…</figure> blocks (img + caption) — for obits to avoid dup image */
-function stripFigures(html = "") {
-  return String(html).replace(/<figure[\s\S]*?<\/figure>/gi, " ");
 }
 function stripHtmlToText(html = "") {
   return normalizeNbsp(
@@ -64,6 +56,37 @@ function readingTime(html) {
   const words = stripHtmlToText(html).split(/\s+/).filter(Boolean).length;
   const mins = Math.max(1, Math.round(words / 220));
   return `${mins} min read`;
+}
+
+/* ------------------------------ body cleaning ------------------------------ */
+/**
+ * Remove the first <figure>…</figure> or leading <p><img…/></p> from the body
+ * when we’re already rendering a featured image above.
+ */
+function stripLeadingFigureOrImage(html = "") {
+  let out = String(html);
+
+  // 1) If the very first non-whitespace block is a <figure>…</figure>, drop it.
+  out = out.replace(/^\s*<figure[\s\S]*?<\/figure>\s*/i, "");
+
+  // 2) If the first block is a <p> that only contains an <img> (and maybe a caption-ish <br>), drop it.
+  out = out.replace(
+    /^\s*<p>\s*(?:<a[^>]*>\s*)?<img\b[\s\S]*?\/>(?:\s*<\/a>)?(?:\s*<br\s*\/?>\s*)?\s*<\/p>\s*/i,
+    ""
+  );
+
+  return out;
+}
+
+/**
+ * Final sanitize: strip <script>, normalize &nbsp;, and conditionally drop the leading figure/img.
+ */
+function sanitizeBodyForDisplay(html = "", { dropFirstFigure = false } = {}) {
+  let out = String(html).replace(/<script[\s\S]*?<\/script>/gi, "");
+  if (dropFirstFigure) {
+    out = stripLeadingFigureOrImage(out);
+  }
+  return normalizeNbsp(out);
 }
 
 /* ------------------------- matching logic (exact hit) ------------------------ */
@@ -121,7 +144,7 @@ async function fetchPostByIdOrSlug(idOrSlug, siteKey = "sandhills") {
       if (exact) return exact;
     }
   }
-  throw lastErr || new Error("[post] Not Found]");
+  throw lastErr || new Error("[post] Not Found");
 }
 
 export const dynamic = "force-dynamic";
@@ -131,13 +154,7 @@ export default async function PostPage({ params }) {
   const resolved = await params;
   const idOrSlug = resolved?.id;
 
-  // derive siteKey from host (optional)
-  let siteKey = "sandhills";
-  try {
-    const h = await headers();
-    const host = h.get("x-forwarded-host") || h.get("host") || "";
-    siteKey = /sandhills/i.test(host) ? "sandhills" : "sandhills";
-  } catch {}
+  const siteKey = (await getCurrentSiteKey()) || "sandhills";
 
   let post = null;
   try {
@@ -158,34 +175,20 @@ export default async function PostPage({ params }) {
 
   /* ----------------------------- derived fields ----------------------------- */
   const title = pick(post, ["title", "headline"]) || "Untitled";
-
   const featured =
     pick(post, ["featured_image_url", "featured_image", "image", "photo", "og_image"]) || null;
 
-  // Alt + caption candidates
-  const imgAlt =
-    pick(post, ["image_alt", "featured_image_alt", "imageAlt"]) ||
-    title ||
-    "";
-  const imgCaption =
-    pick(post, ["image_caption", "caption", "photo_credit", "featured_media.caption"]) || "";
-
-  // raw HTML body
-  let bodyRaw =
+  // Sanitize body; if we have a featured image above, drop the first figure/img from the body
+  const rawBody =
     pick(post, ["body", "content", "html", "article_html", "body_html", "content_html"]) || "";
+  const bodyHtml = sanitizeBodyForDisplay(rawBody, { dropFirstFigure: Boolean(featured) });
 
-  // obits detection from categories/tags
   const rawCats = pick(post, ["categories", "category", "tags"]) || [];
   const cats = Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [];
   const catName =
     (typeof cats[0] === "string" && cats[0]) ||
     (cats[0] && (cats[0].name || cats[0].title)) ||
     "";
-  const isObits = String(catName || "").toLowerCase().includes("obit");
-
-  // For obits, strip <figure>…</figure> blocks from body (to avoid duplicate image/caption),
-  // then sanitize and normalize &nbsp; etc.
-  const bodyHtml = sanitizeHtml(isObits ? stripFigures(bodyRaw) : bodyRaw);
 
   const published =
     pick(post, ["published", "published_at", "date", "created_at"]) ||
@@ -193,10 +196,13 @@ export default async function PostPage({ params }) {
     null;
 
   const metaPieces = [];
-  if (catName) metaPieces.push(catName);
+  if (catName) metaPieces.push(
+    // category “pill” styled as a subtle chip
+    `<span class="inline-block align-[2px] rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-neutral-700 uppercase">${String(catName)}</span>`
+  );
   if (published) metaPieces.push(fmtDateTime(published)); // date + time
   if (bodyHtml) metaPieces.push(readingTime(bodyHtml));
-  const metaLine = metaPieces.join(" • ");
+  const metaLineHtml = metaPieces.join(" • ");
 
   /* ---------------------------------- view ---------------------------------- */
   return (
@@ -207,7 +213,7 @@ export default async function PostPage({ params }) {
           <li>
             <a
               href="/"
-              className="before:content-[''] !text-sky-700 hover:!text-sky-800 hover:underline"
+              className="!text-sky-700 hover:!text-sky-800 hover:underline"
             >
               Home
             </a>
@@ -219,7 +225,7 @@ export default async function PostPage({ params }) {
               <li>
                 <a
                   href={`/category/${encodeURIComponent(slugify(catName))}`}
-                  className="before:content-[''] !text-sky-700 hover:!text-sky-800 hover:underline"
+                  className="!text-sky-700 hover:!text-sky-800 hover:underline"
                 >
                   {String(catName).toLowerCase()}
                 </a>
@@ -232,47 +238,28 @@ export default async function PostPage({ params }) {
       {/* Title */}
       <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-black">{title}</h1>
 
-      {/* Meta line */}
-      {metaLine ? (
-        <div className="mt-2 text-sm text-neutral-600">{metaLine}</div>
+      {/* Meta line: inject chip + date/time + read-time */}
+      {metaLineHtml ? (
+        <div
+          className="mt-2 text-sm text-neutral-600 not-prose"
+          dangerouslySetInnerHTML={{ __html: metaLineHtml }}
+        />
       ) : null}
 
-      {/* Featured image — centered, smaller on md+; NO rounded corners */}
+      {/* Featured — one image, **no rounded corners** */}
       {featured ? (
-        <figure className="py-6">
-          <img
-            src={featured}
-            alt={imgAlt}
-            className="mx-auto w-full sm:w-full md:w-1/2"
-          />
-          {imgCaption ? (
-            <figcaption className="text-center italic text-gray-700 text-sm pt-2">
-              {imgCaption}
-            </figcaption>
-          ) : null}
-        </figure>
+        <div className="mt-6">
+          <img src={featured} alt={title} className="w-full h-auto /* no rounded */" />
+        </div>
       ) : null}
 
-      {/* Body — spacing guaranteed via a plain <style> block below; images have no radius */}
+      {/* Body with nice paragraph spacing */}
       <article
-        data-rich
-        className="mt-2 max-w-none text-[17px] leading-[1.75]"
+        className="prose prose-neutral max-w-none mt-8 prose-p:my-5 prose-img:rounded-none"
         dangerouslySetInnerHTML={{ __html: bodyHtml }}
       />
 
       <ShareRow className="mt-10" />
-
-      {/* Plain style tag (safe in Server Component) — also remove any image rounding */}
-      <style>{`
-        article[data-rich] p { margin: 1.25rem 0; }
-        article[data-rich] ul,
-        article[data-rich] ol { margin: 1.25rem 0; padding-left: 1.25rem; }
-        article[data-rich] li { margin: 0.25rem 0; }
-        article[data-rich] h2 { margin-top: 2rem; margin-bottom: 0.75rem; }
-        article[data-rich] h3 { margin-top: 1.5rem; margin-bottom: 0.5rem; }
-        article[data-rich] img { border-radius: 0; max-width: 100%; height: auto; }
-        figure img { border-radius: 0; }
-      `}</style>
     </main>
   );
 }
