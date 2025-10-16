@@ -3,84 +3,41 @@
 
 import { useCallback, useMemo, useState } from "react";
 import StoryListWithAds from "@/components/StoryListWithAds";
-import { getApiBase } from "@/lib/api-base";
+import CategoryLoadMore from "@/components/CategoryLoadMore";
 
+/**
+ * Server passes initialItems (SSR set), slug (e.g. "obituaries"), and site (e.g. "sandhills").
+ * This component renders the grid and uses <CategoryLoadMore> as the footer.
+ */
 export default function CategoryListWithLoadMore({
-  slug,
-  site,
-  pageSize = 24,
-  sectionTitle = "Category",
-  initialItems = [],
+    slug,
+    site,
+    pageSize = 24,
+    sectionTitle = "Category",
+    initialItems = [],
+    ...listProps
+  }) {
+  // local state only for the grid we render immediately
+  const [items] = useState(initialItems);
 
-  // Pass-through props for StoryListWithAds (e.g., obits tweaks)
-  ...listProps
-}) {
-  const BASE = getApiBase();
-
-  const [items, setItems] = useState(Array.isArray(initialItems) ? initialItems : []);
-  const [offset, setOffset] = useState(items.length);
-  const [loading, setLoading] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
-
-  const hasMore = !exhausted && !loading;
-
-  const loadMore = useCallback(async () => {
-    if (!slug || loading || exhausted) return;
-    setLoading(true);
-    try {
-      const qs = new URLSearchParams({
-        categories: String(slug),
-        public: "true",
-        sites: site || "sandhills",
-        status: "published",
-        limit: String(pageSize),
-        offset: String(offset),
-      });
-
-      const url = `${BASE}/posts?${qs.toString()}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`[category:load-more] ${res.status} ${res.statusText}`);
-      const data = await res.json();
-
-      const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-      setItems(prev => [...prev, ...arr]);
-      setOffset(prev => prev + arr.length);
-      if (arr.length < pageSize) setExhausted(true);
-    } catch (e) {
-      console.error("[category:load-more] failed:", e);
-      setExhausted(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [slug, site, pageSize, offset, loading, exhausted, BASE]);
-
-  const footer = useMemo(() => {
-    if (exhausted && items.length > 0) {
-      return <div className="text-center text-sm text-neutral-500 py-4">No more stories.</div>;
-    }
-    if (hasMore) {
-      return (
-        <div className="flex justify-center py-4">
-          <button
-            type="button"
-            onClick={loadMore}
-            className="rounded bg-neutral-900 px-4 py-2 text-white hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-          >
-            Load more
-          </button>
-        </div>
-      );
-    }
-    return null;
-  }, [hasMore, exhausted, items.length, loadMore]);
+  // Build a footer that mounts our robust client-loader and seeds it with what's already on screen
+  const footer = useMemo(() => (
+    <CategoryLoadMore
+      slug={slug}
+      siteKey={site || "sandhills"}
+      pageSize={pageSize}
+      initialOffset={items.length}  // start AFTER the SSR items
+      seedFromItems={items}         // seed dedupe from what is already rendered
+    />
+  ), [slug, site, pageSize, items]);
 
   return (
     <StoryListWithAds
       items={items}
       sectionTitle={sectionTitle}
-      loading={loading}
-      loadingMode="append"
       footer={footer}
+      loading={false}
+      loadingMode="append"
       {...listProps}
     />
   );

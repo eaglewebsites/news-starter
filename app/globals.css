@@ -159,3 +159,11 @@ header a:hover, nav a:hover, .site-header a:hover, .top-nav a:hover, .main-nav a
 /* Ensure breadcrumb links are readable */
 [aria-label="Breadcrumb"] a { color: var(--tw-prose-links, #0369a1) !important; }
 
+/* Brand color token */
+:root {
+  /* tweak this once to rebrand site-wide */
+  --brand-700: #075985; /* was Tailwind sky-800 */
+}
+
+/* Utility to use the brand token like a Tailwind class */
+.text-brand-700 { color: var(--brand-700); }
