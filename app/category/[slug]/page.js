@@ -1,7 +1,7 @@
 // app/category/[slug]/page.js
 
 import CategoryListWithLoadMore from "@/components/CategoryListWithLoadMore";
-import { getCurrentSiteKey } from "@/lib/site-detection";
+import { getCurrentSiteKey } from "@/lib/site-detection-server";
 import { getApiBase, NO_STORE } from "@/lib/api-base";
 
 /* helpers */
@@ -52,15 +52,18 @@ function titleCase(s = "") {
 
 async function fetchCategoryPage({ slug, site, limit = 24, offset = 0 }) {
   if (!slug) throw new Error("[category] Missing required param: slug");
+
   const BASE = getApiBase();
-  const qs = new URLSearchParams({
-    categories: slug,
-    public: "true",
-    sites: site || "sandhills",
-    status: "published",
-    limit: String(limit),
-    offset: String(offset),
-  });
+  const siteKey = (site ?? (await getCurrentSiteKey()) ?? "").toLowerCase();
+
+  const qs = new URLSearchParams();
+  qs.set("categories", slug);
+  qs.set("public", "true");
+  if (siteKey) qs.set("sites", siteKey); // only send if we have one
+  qs.set("status", "published");
+  qs.set("limit", String(limit));
+  qs.set("offset", String(offset));
+
   const url = `${BASE}/posts?${qs.toString()}`;
   console.log("[category][fetch]", url);
 
@@ -68,27 +71,29 @@ async function fetchCategoryPage({ slug, site, limit = 24, offset = 0 }) {
   if (!res.ok) throw new Error(`[category] ${res.status} ${res.statusText}`);
   const data = await res.json();
 
-  const arr = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-  const withSnippets = arr.map(item => {
+  // be flexible about shapes
+  const arr =
+    Array.isArray(data) ? data
+    : Array.isArray(data?.items) ? data.items
+    : Array.isArray(data?.results) ? data.results
+    : Array.isArray(data?.posts) ? data.posts
+    : Array.isArray(data?.data?.items) ? data.data.items
+    : Array.isArray(data?.data) ? data.data
+    : [];
+
+  const withSnippets = arr.map((item) => {
     const post = root(item);
     const _snippet = makeSnippetFromPost(post);
     return { ...item, _snippet };
   });
 
-  console.log(
-    "[category][result]",
-    slug,
-    "→",
-    `${withSnippets.length} items (limit=${limit}, offset=${offset}, site=${site || "sandhills"})`
-  );
-  return withSnippets;
+  return { items: withSnippets, siteKey };
 }
 
 export const dynamic = "force-dynamic";
 
 export default async function CategoryPage({ params }) {
-  const resolved = await params;
-  const slug = resolved?.slug;
+  const slug = (await params)?.slug;
   const PAGE_SIZE = 24;
 
   const siteKey = await getCurrentSiteKey();
@@ -96,7 +101,8 @@ export default async function CategoryPage({ params }) {
 
   let initialItems = [];
   try {
-    initialItems = await fetchCategoryPage({ slug, site: siteKey, limit: PAGE_SIZE, offset: 0 });
+    const { items } = await fetchCategoryPage({ slug, site: siteKey, limit: PAGE_SIZE, offset: 0 });
+    initialItems = items; // <-- use the array only
   } catch (e) {
     console.error("[category] initial fetch failed:", e);
     initialItems = [];
@@ -116,10 +122,10 @@ export default async function CategoryPage({ params }) {
     <main className="mx-auto w-full max-w-7xl px-4">
       <CategoryListWithLoadMore
         slug={slug}
-        site={siteKey}
+        siteKey={siteKey}          // <-- pass siteKey down to the client component
         pageSize={PAGE_SIZE}
         sectionTitle={sectionTitle}
-        initialItems={initialItems}
+        initialItems={initialItems} // <-- array, not object
         {...listProps}
       />
     </main>
