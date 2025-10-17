@@ -1,35 +1,35 @@
 // app/section/[slug]/page.js
-import { notFound } from 'next/navigation'
-import { getCurrentSiteKey } from '@/lib/site-detection'
+import { notFound } from 'next/navigation';
+import { getCurrentSiteKey } from '@/lib/site-detection-server';
 
-export const dynamic = 'force-dynamic'
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }) {
-  const { slug } = params
+  const slug = params?.slug ?? '';
+  const title = slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : 'Section';
   return {
-    title: slug.charAt(0).toUpperCase() + slug.slice(1),
-    description: `Latest ${slug} news.`,
-  }
+    title,
+    description: `Latest ${slug || 'section'} news.`,
+  };
 }
 
 export default async function SectionPage({ params }) {
-  const { slug } = params
-  const site = await getCurrentSiteKey()
+  const slug = params?.slug;
+  if (!slug) notFound();
 
-  // Later this will fetch data like:
-  // const stories = await fetchSectionPosts(site, slug)
-  // For now, we’ll use a placeholder
+  // server-side site detection (safe here)
+  const site = await getCurrentSiteKey();
+
+  // TODO: replace with real fetch, e.g. fetchSectionPosts(site, slug)
   const placeholderStories = [
     { id: 1, title: `Sample ${slug} Story`, href: `/posts/example-id` },
     { id: 2, title: `Another ${slug} Headline`, href: `/posts/example-id` },
-  ]
-
-  if (!slug) notFound()
+  ];
 
   return (
     <main className="mx-auto max-w-screen-xl px-4 pb-10 sm:pb-12 md:pb-16">
       <h1 className="text-3xl font-semibold capitalize">{slug}</h1>
-      <p className="mt-2 text-slate-600">Site: {site}</p>
+      <p className="mt-2 text-slate-600">Site: {site || '(unknown)'}</p>
 
       <ul className="mt-6 space-y-3">
         {placeholderStories.map((story) => (
@@ -44,5 +44,5 @@ export default async function SectionPage({ params }) {
         ))}
       </ul>
     </main>
-  )
+  );
 }

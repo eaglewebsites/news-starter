@@ -17,14 +17,15 @@ function pick(obj, paths = []) {
 }
 
 /* ----------------------------- text utilities ------------------------------ */
-function normalizeNbsp(s = "") {
+function normalizeNbspToEntity(s = "") {
+  // Normalize all NBSP variants to the SAME entity so server & client strings match
   return String(s)
-    .replace(/&amp;nbsp;/gi, " ")
-    .replace(/&(?:nbsp|#160);/gi, " ")
-    .replace(/\u00a0/g, " ");
+    .replace(/&amp;nbsp;/gi, "&#160;")
+    .replace(/&nbsp;/gi, "&#160;")
+    .replace(/\u00a0/g, "&#160;");
 }
 function stripHtmlToText(html = "") {
-  return normalizeNbsp(
+  return normalizeNbspToEntity(
     String(html)
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -59,17 +60,11 @@ function readingTime(html) {
 }
 
 /* ------------------------------ body cleaning ------------------------------ */
-/**
- * Remove the first <figure>…</figure> or leading <p><img…/></p> from the body
- * when we’re already rendering a featured image above.
- */
+/** drop first <figure>…</figure> OR leading <p><img…/></p> if we show a featured image above */
 function stripLeadingFigureOrImage(html = "") {
   let out = String(html);
 
-  // 1) If the very first non-whitespace block is a <figure>…</figure>, drop it.
   out = out.replace(/^\s*<figure[\s\S]*?<\/figure>\s*/i, "");
-
-  // 2) If the first block is a <p> that only contains an <img> (and maybe a caption-ish <br>), drop it.
   out = out.replace(
     /^\s*<p>\s*(?:<a[^>]*>\s*)?<img\b[\s\S]*?\/>(?:\s*<\/a>)?(?:\s*<br\s*\/?>\s*)?\s*<\/p>\s*/i,
     ""
@@ -79,14 +74,19 @@ function stripLeadingFigureOrImage(html = "") {
 }
 
 /**
- * Final sanitize: strip <script>, normalize &nbsp;, and conditionally drop the leading figure/img.
+ * Final sanitize for display:
+ * - remove <script>
+ * - optionally drop leading figure/img
+ * - normalize NBSP variants to a single entity form (&#160;) for hydration stability
  */
 function sanitizeBodyForDisplay(html = "", { dropFirstFigure = false } = {}) {
   let out = String(html).replace(/<script[\s\S]*?<\/script>/gi, "");
   if (dropFirstFigure) {
     out = stripLeadingFigureOrImage(out);
   }
-  return normalizeNbsp(out);
+  // IMPORTANT: force deterministic &nbsp; representation
+  out = normalizeNbspToEntity(out);
+  return out;
 }
 
 /* ------------------------- matching logic (exact hit) ------------------------ */
@@ -105,18 +105,14 @@ function matchesToken(item, token) {
 }
 
 /* ------------------------------- data fetcher -------------------------------- */
-/**
- * No hardcoded default site. If siteKey is falsy, we omit &sites= entirely.
- */
-async function fetchPostByIdOrSlug(idOrSlug, siteKey) {
+async function fetchPostByIdOrSlug(idOrSlug, siteKey = "") {
   const BASE = getApiBase();
-  const siteParam = siteKey ? `&sites=${encodeURIComponent(siteKey)}` : "";
-
+  const qpSite = siteKey ? `&sites=${siteKey}` : "";
   const tries = [
-    `${BASE}/posts?slug=${encodeURIComponent(idOrSlug)}&public=true&status=published${siteParam}&limit=10`,
-    `${BASE}/posts/${encodeURIComponent(idOrSlug)}?public=true&status=published${siteParam}`,
-    `${BASE}/posts?id=${encodeURIComponent(idOrSlug)}&public=true&status=published${siteParam}&limit=10`,
-    `${BASE}/posts?search=${encodeURIComponent(idOrSlug)}&public=true&status=published${siteParam}&limit=20`,
+    `${BASE}/posts?slug=${encodeURIComponent(idOrSlug)}&public=true&status=published${qpSite}&limit=10`,
+    `${BASE}/posts/${encodeURIComponent(idOrSlug)}?public=true&status=published${qpSite}`,
+    `${BASE}/posts?id=${encodeURIComponent(idOrSlug)}&public=true&status=published${qpSite}&limit=10`,
+    `${BASE}/posts?search=${encodeURIComponent(idOrSlug)}&public=true&status=published${qpSite}&limit=20`,
   ];
 
   let lastErr = null;
@@ -159,7 +155,6 @@ export default async function PostPage({ params }) {
   const resolved = await params;
   const idOrSlug = resolved?.id;
 
-  // 👇 derive from request; no hardcoded fallback here
   const siteKey = (await getCurrentSiteKey()) || "";
 
   let post = null;
@@ -203,10 +198,9 @@ export default async function PostPage({ params }) {
 
   const metaPieces = [];
   if (catName) metaPieces.push(
-    // category “pill” styled as a subtle chip
     `<span class="inline-block align-[2px] rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-neutral-700 uppercase">${String(catName)}</span>`
   );
-  if (published) metaPieces.push(fmtDateTime(published)); // date + time
+  if (published) metaPieces.push(fmtDateTime(published));
   if (bodyHtml) metaPieces.push(readingTime(bodyHtml));
   const metaLineHtml = metaPieces.join(" • ");
 
@@ -244,10 +238,12 @@ export default async function PostPage({ params }) {
       {/* Title */}
       <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-black">{title}</h1>
 
-      {/* Meta line: inject chip + date/time + read-time */}
+      {/* Meta line */}
       {metaLineHtml ? (
         <div
           className="mt-2 text-sm text-neutral-600 not-prose"
+          // meta contains locale/date—won’t differ often, but be safe:
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: metaLineHtml }}
         />
       ) : null}
@@ -255,13 +251,15 @@ export default async function PostPage({ params }) {
       {/* Featured — one image, **no rounded corners** */}
       {featured ? (
         <div className="mt-6">
-          <img src={featured} alt={title} className="w-full h-auto" />
+          <img src={featured} alt={title} className="w-full h-auto /* no rounded */" />
         </div>
       ) : null}
 
       {/* Body with nice paragraph spacing */}
       <article
         className="prose prose-neutral max-w-none mt-8 prose-p:my-5 prose-img:rounded-none"
+        // 🔒 Prevent hydration warnings if the CMS sneaks in NBSP variations, etc.
+        suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: bodyHtml }}
       />
 
