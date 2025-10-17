@@ -167,3 +167,28 @@ header a:hover, nav a:hover, .site-header a:hover, .top-nav a:hover, .main-nav a
 
 /* Utility to use the brand token like a Tailwind class */
 .text-brand-700 { color: var(--brand-700); }
+
+/* Global article paragraph styling */
+@layer base {
+  /* Covers normal articles */
+  article > p,
+  /* Covers your story pages that use Tailwind Typography (.prose) */
+  article.prose > p {
+    font-size: 1.125rem;     /* 18px */
+    color: #2d3748;          /* slate-ish gray */
+    line-height: 2;          /* comfy reading */
+    padding-top: 1.1rem;
+    padding-bottom: 1.1rem;
+  }
+
+  /* Avoid extra space at the very start/end of the article */
+  article > p:first-child,
+  article.prose > p:first-child {
+    padding-top: 0;
+  }
+  article > p:last-child,
+  article.prose > p:last-child {
+    padding-bottom: 0;
+  }
+}
+
