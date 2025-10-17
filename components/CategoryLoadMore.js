@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSiteKeySync } from "@/lib/site-detection";
+import { getSiteKeySync } from "@/lib/site-detection-client";
 
 /* ------------------------------ small helpers ------------------------------ */
 

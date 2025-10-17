@@ -1,7 +1,7 @@
 // app/posts/[id]/page.js
 import ShareRow from "@/components/ShareRow";
 import { getApiBase, NO_STORE } from "@/lib/api-base";
-import { getCurrentSiteKey } from "@/lib/site-detection";
+import { getCurrentSiteKey } from "@/lib/site-detection-server";
 
 /* ------------------------- tiny pick/unwrap helpers ------------------------- */
 function root(obj) {
@@ -105,13 +105,18 @@ function matchesToken(item, token) {
 }
 
 /* ------------------------------- data fetcher -------------------------------- */
-async function fetchPostByIdOrSlug(idOrSlug, siteKey = "sandhills") {
+/**
+ * No hardcoded default site. If siteKey is falsy, we omit &sites= entirely.
+ */
+async function fetchPostByIdOrSlug(idOrSlug, siteKey) {
   const BASE = getApiBase();
+  const siteParam = siteKey ? `&sites=${encodeURIComponent(siteKey)}` : "";
+
   const tries = [
-    `${BASE}/posts?slug=${encodeURIComponent(idOrSlug)}&public=true&status=published&sites=${siteKey}&limit=10`,
-    `${BASE}/posts/${encodeURIComponent(idOrSlug)}?public=true&status=published&sites=${siteKey}`,
-    `${BASE}/posts?id=${encodeURIComponent(idOrSlug)}&public=true&status=published&sites=${siteKey}&limit=10`,
-    `${BASE}/posts?search=${encodeURIComponent(idOrSlug)}&public=true&status=published&sites=${siteKey}&limit=20`,
+    `${BASE}/posts?slug=${encodeURIComponent(idOrSlug)}&public=true&status=published${siteParam}&limit=10`,
+    `${BASE}/posts/${encodeURIComponent(idOrSlug)}?public=true&status=published${siteParam}`,
+    `${BASE}/posts?id=${encodeURIComponent(idOrSlug)}&public=true&status=published${siteParam}&limit=10`,
+    `${BASE}/posts?search=${encodeURIComponent(idOrSlug)}&public=true&status=published${siteParam}&limit=20`,
   ];
 
   let lastErr = null;
@@ -154,7 +159,8 @@ export default async function PostPage({ params }) {
   const resolved = await params;
   const idOrSlug = resolved?.id;
 
-  const siteKey = (await getCurrentSiteKey()) || "sandhills";
+  // 👇 derive from request; no hardcoded fallback here
+  const siteKey = (await getCurrentSiteKey()) || "";
 
   let post = null;
   try {
@@ -249,7 +255,7 @@ export default async function PostPage({ params }) {
       {/* Featured — one image, **no rounded corners** */}
       {featured ? (
         <div className="mt-6">
-          <img src={featured} alt={title} className="w-full h-auto /* no rounded */" />
+          <img src={featured} alt={title} className="w-full h-auto" />
         </div>
       ) : null}
 

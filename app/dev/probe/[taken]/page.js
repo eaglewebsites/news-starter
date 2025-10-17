@@ -1,6 +1,6 @@
 // app/dev/probe/[token]/page.js
 import { probeDetailEndpoints } from "@/lib/api/probe";
-import { getCurrentSiteKey } from "@/lib/site-detection";
+import { getCurrentSiteKey } from "@/lib/site-detection-server";
 
 export const revalidate = 0;
 export const dynamic = "force-dynamic";

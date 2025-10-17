@@ -4,7 +4,7 @@ import TopBanner from "@/components/TopBanner";
 import SiteHeader from "@/components/SiteHeader";
 import ExternalLinkEnforcer from "@/components/ExternalLinkEnforcer";
 import { SITES } from "@/lib/sites";
-import { getCurrentSiteKey } from "@/lib/site-detection";
+import { getCurrentSiteKey } from "@/lib/site-detection-server";
 import { fetchSiteMenu } from "@/lib/menu-api";
 
 export default async function RootLayout({ children }) {
