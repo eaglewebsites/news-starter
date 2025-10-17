@@ -122,8 +122,6 @@ function internalHrefForApp(p) {
 }
 
 function deriveHref(post) {
-  // our normalized objects already include a proper href;
-  // but if anything slips through, rebuild it here the same way.
   return post.href || internalHrefForApp(post);
 }
 
@@ -218,7 +216,7 @@ function stableId(p) {
 
 /** Normalize one API item into the row shape we render. */
 function normalizePostInternal(p, siteKey, isObits) {
-  const href = internalHrefForApp(p); // 👈 prefer ID path, no ?orig
+  const href = internalHrefForApp(p);
   const titleForStrip = p.title ?? p.post_title ?? "";
   const snippet = makeSnippet(p, 240, titleForStrip, isObits);
 
@@ -251,7 +249,7 @@ function capitalize(s) {
 
 export default function CategoryLoadMore({
   slug,
-  siteKey,                 // optional; if omitted we detect from hostname
+  siteKey,                 // optional; if omitted we detect on the client
   initialOffset = 0,
   initialIds = [],         // optional
   pageSize = 24,
@@ -269,17 +267,13 @@ export default function CategoryLoadMore({
   const [hasMore, setHasMore] = useState(true);
 
   const seenRef = useRef(new Set(initialIds));
-  const lastSigRef = useRef(""); // signature of last page fetched to detect repeats
+  const lastSigRef = useRef("");
 
-  // If a prop wasn't provided, detect on the client
+  // If no prop was provided, detect on the client
   const siteKeyLocal = siteKey || getSiteKeySync();
 
   const isObits = useMemo(() => (slug || "").toLowerCase().includes("obit"), [slug]);
   const forceNoCrop = noCropImages ?? isObits;
-
-  const defaultThumbBox =
-    "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]";
-  const thumbBox = thumbClass || defaultThumbBox;
 
   const BASE = useMemo(
     () => (process.env.NEXT_PUBLIC_EAGLE_BASE_API || "").replace(/\/+$/, ""),
@@ -312,17 +306,16 @@ export default function CategoryLoadMore({
         `${BASE}/posts?` +
         `categories=${encodeURIComponent(slug)}` +
         `&public=true` +
-        `&sites=${encodeURIComponent(siteKeyLocal)}` +
+        (siteKeyLocal ? `&sites=${encodeURIComponent(siteKeyLocal)}` : "") +
         `&status=published` +
         `&limit=${pageSize}` +
         `&page=${page}`;
     } else {
-      // default: offset
       url =
         `${BASE}/posts?` +
         `categories=${encodeURIComponent(slug)}` +
         `&public=true` +
-        `&sites=${encodeURIComponent(siteKeyLocal)}` +
+        (siteKeyLocal ? `&sites=${encodeURIComponent(siteKeyLocal)}` : "") +
         `&status=published` +
         `&limit=${pageSize}` +
         `&offset=${nextOffset}`;
@@ -415,9 +408,6 @@ export default function CategoryLoadMore({
 
             const snippet = sanitizeSnippet(post._snippet || "");
 
-            const id =
-              pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
-
             const alt = `${(isObits ? "Obituary: " : "")}${title}`;
 
             return (
@@ -425,12 +415,12 @@ export default function CategoryLoadMore({
                 <a href={href} className="group flex items-start gap-4 md:gap-5 outline-none">
                   {/* Thumbnail (contain for obits; cover otherwise) */}
                   {isObits ? (
-                    <div className={`flex items-center justify-center ${thumbClass || "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]"}`}>
+                    <div className={thumbClass || "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]"}>
                       {img ? (
                         <img
                           src={img}
                           alt={alt}
-                          className="block max-w-full max-h-full w-auto h-auto"
+                          className="block max-w-full max-h-full w-auto h-auto object-contain"
                           loading="lazy"
                         />
                       ) : (
@@ -475,8 +465,6 @@ export default function CategoryLoadMore({
                       <p
                         className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
                         data-snipsrc="client"
-                        data-snippetlen={snippet.length}
-                        data-postid={id}
                         title={snippet}
                       >
                         {snippet}

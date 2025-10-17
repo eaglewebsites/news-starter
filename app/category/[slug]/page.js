@@ -102,7 +102,7 @@ export default async function CategoryPage({ params }) {
   let initialItems = [];
   try {
     const { items } = await fetchCategoryPage({ slug, site: siteKey, limit: PAGE_SIZE, offset: 0 });
-    initialItems = items; // <-- use the array only
+    initialItems = items;
   } catch (e) {
     console.error("[category] initial fetch failed:", e);
     initialItems = [];
@@ -122,10 +122,10 @@ export default async function CategoryPage({ params }) {
     <main className="mx-auto w-full max-w-7xl px-4">
       <CategoryListWithLoadMore
         slug={slug}
-        siteKey={siteKey}          // <-- pass siteKey down to the client component
+        siteKey={siteKey}          // ✅ optional: helpful if you want server to pass it; client will auto-detect if omitted
         pageSize={PAGE_SIZE}
         sectionTitle={sectionTitle}
-        initialItems={initialItems} // <-- array, not object
+        initialItems={initialItems}
         {...listProps}
       />
     </main>
