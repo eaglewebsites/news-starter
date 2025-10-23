@@ -6,6 +6,7 @@ import ExternalLinkEnforcer from "@/components/ExternalLinkEnforcer";
 import { SITES } from "@/lib/sites";
 import { getCurrentSiteKey } from "@/lib/site-detection-server";
 import { fetchSiteMenu } from "@/lib/menu-api";
+import Script from "next/script";
 
 export default async function RootLayout({ children }) {
   const siteKey = await getCurrentSiteKey(); // server-side OK to await
@@ -21,6 +22,14 @@ export default async function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className="antialiased">
+        
+
+        <Script
+          id="audience-bootstrap"
+          src="https://xp.audience.io/widget.js"
+          strategy="afterInteractive"
+        />
+
         {/* Ensures true external domains open in a new tab across the site */}
         <ExternalLinkEnforcer />
 
