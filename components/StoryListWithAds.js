@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import SafeLink from "@/components/SafeLink";
+import EmbedIframe from "@/components/EmbedIframe";
 
 /* ------------------------------ small helpers ------------------------------ */
 
@@ -131,6 +132,9 @@ export default function StoryListWithAds({
   showControls = false,
   searchPlaceholder = "Search…",
   categoryLabel = "Filter",
+
+  /** OPTIONAL: custom renderer for the snippet area (item) => ReactNode */
+  renderSnippet,
 }) {
   const autoObits = looksLikeObitsList({ sectionTitle, items });
   const forceNoCrop = noCropImages ?? autoObits;
@@ -139,20 +143,24 @@ export default function StoryListWithAds({
     "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]";
   const thumbBox = thumbClass || defaultThumbBox;
 
-  const CoverThumb = ({ src, alt }) => (
+  const CoverThumb = ({ src, alt, href }) => (
     <div className={thumbBox}>
       {src ? (
-        <img src={src} alt={alt} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+        <SafeLink href={href} className="block">
+          <img src={src} alt={alt} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+        </SafeLink>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">No image</div>
       )}
     </div>
   );
 
-  const ContainThumb = ({ src, alt }) => (
+  const ContainThumb = ({ src, alt, href }) => (
     <div className={`flex items-center justify-center ${thumbBox}`}>
       {src ? (
-        <img src={src} alt={alt} className="block max-w-full max-h-full w-auto h-auto" loading="lazy" />
+        <SafeLink href={href} className="block">
+          <img src={src} alt={alt} className="block max-w-full max-h-full w-auto h-auto" loading="lazy" />
+        </SafeLink>
       ) : (
         <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">No image</div>
       )}
@@ -333,61 +341,79 @@ export default function StoryListWithAds({
                     pick(post, ["updated", "updated_at", "modified", "date", "published_at"]) || null;
 
                   const snippet = raw._snippet || "";
+                  const embedHtml = raw._embedHtml || ""; // ← vendor snippet if allowed
                   const id =
                     pick(post, ["id", "uuid", "guid", "slug", "seo_slug", "post_slug"]) || `row-${idx}`;
 
-                  const alt = `${computedAltPrefix}${title}`;
+                  const alt = `${(altPrefix !== undefined ? altPrefix : (looksLikeObitsList({sectionTitle, items}) ? "Obituary: " : ""))}${title}`;
 
                   return (
                     <li key={(post.id || post.slug || href || idx) + "::row"} className="py-4">
-                      <SafeLink
-                        href={href}
-                        className="group flex items-start gap-4 md:gap-5 outline-none"
-                      >
-                        {(forceNoCrop ? (
-                          <div className={`flex items-center justify-center ${thumbBox}`}>
-                            {img ? (
-                              <img src={img} alt={alt} className="block max-w-full max-h-full w-auto h-auto" loading="lazy" />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">No image</div>
-                            )}
-                          </div>
+                      <div className="flex items-start gap-4 md:gap-5">
+                        {/* thumbnail — clickable */}
+                        {img ? (
+                          (noCropImages ?? looksLikeObitsList({sectionTitle, items})) ? (
+                            <div className={`flex items-center justify-center ${thumbBox}`}>
+                              <SafeLink href={href} className="block">
+                                <img src={img} alt={alt} className="block max-w-full max-h-full w-auto h-auto" loading="lazy" />
+                              </SafeLink>
+                            </div>
+                          ) : (
+                            <div className={thumbBox}>
+                              <SafeLink href={href} className="block">
+                                <img src={img} alt={alt} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                              </SafeLink>
+                            </div>
+                          )
                         ) : (
                           <div className={thumbBox}>
-                            {img ? (
-                              <img src={img} alt={alt} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">No image</div>
-                            )}
+                            <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">No image</div>
                           </div>
-                        ))}
+                        )}
 
+                        {/* text column */}
                         <div className="min-w-0 flex-1">
-                          <h3
-                            className={[
-                              "font-bold text-[20px] leading-[1] text-black",
-                              "group-hover:underline",
-                              focusUnderline ? "group-focus-visible:underline" : "",
-                            ].join(" ").trim()}
-                          >
-                            {title}
+                          {/* title — clickable */}
+                          <h3 className="font-bold text-[20px] leading-[1] text-black">
+                            <SafeLink
+                              href={href}
+                              className={[
+                                "outline-none",
+                                "hover:underline",
+                                focusUnderline ? "focus-visible:underline" : "",
+                              ].join(" ")}
+                            >
+                              {title}
+                            </SafeLink>
                           </h3>
 
                           <div className="mt-1 text-[13px] leading-[1] font-light text-neutral-500">
                             {updated ? `Updated ${timeAgo(updated)}` : ""}
                           </div>
 
-                          <p
-                            className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
-                            data-snipsrc={snippet ? "server" : "none"}
-                            data-snippetlen={snippet ? snippet.length : 0}
-                            data-postid={id}
-                            title={snippet || ""}
-                          >
-                            {snippet}
-                          </p>
+                          {/* Snippet/Embed — outside links, runs in iframe so vendor scripts initialize */}
+                          {typeof renderSnippet === "function" ? (
+                            renderSnippet(raw)
+                          ) : embedHtml ? (
+                            <EmbedIframe
+                              html={embedHtml}
+                              className="mt-2 block"
+                              minHeight={160}
+                              maxHeight={2000}
+                            />
+                          ) : (
+                            <p
+                              className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
+                              data-snipsrc={snippet ? "server" : "none"}
+                              data-snippetlen={snippet ? snippet.length : 0}
+                              data-postid={id}
+                              title={snippet || ""}
+                            >
+                              {snippet}
+                            </p>
+                          )}
                         </div>
-                      </SafeLink>
+                      </div>
                     </li>
                   );
                 })}
@@ -525,7 +551,7 @@ function normalizePostInternal(p, siteKey) {
     href,
     title: p.title ?? p.post_title ?? "Untitled",
     image: p.image ?? p.featured_image ?? p.image_url ?? null,
-    updated: p.updated ?? p.updated_at ?? p.published_at ?? null,
+    updated: p.updated ?? p.updated_at ?? null,
   };
 }
 

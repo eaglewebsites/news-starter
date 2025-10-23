@@ -1,5 +1,7 @@
 // app/posts/[id]/page.js
 import ShareRow from "@/components/ShareRow";
+import TwitterEmbeds from "@/components/TwitterEmbeds"; // upgrades <blockquote class="twitter-tweet">…
+import ScriptedHtml from "@/components/ScriptedHtml";   // runs allow-listed <script> tags
 import { getApiBase, NO_STORE } from "@/lib/api-base";
 import { getCurrentSiteKey } from "@/lib/site-detection-server";
 
@@ -18,7 +20,6 @@ function pick(obj, paths = []) {
 
 /* ----------------------------- text utilities ------------------------------ */
 function normalizeNbspToEntity(s = "") {
-  // Normalize all NBSP variants to the SAME entity so server & client strings match
   return String(s)
     .replace(/&amp;nbsp;/gi, "&#160;")
     .replace(/&nbsp;/gi, "&#160;")
@@ -51,7 +52,9 @@ function fmtDateTime(dLike) {
     const date = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     return `${date} · ${time}`;
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 }
 function readingTime(html) {
   const words = stripHtmlToText(html).split(/\s+/).filter(Boolean).length;
@@ -59,34 +62,25 @@ function readingTime(html) {
   return `${mins} min read`;
 }
 
-/* ------------------------------ body cleaning ------------------------------ */
-/** drop first <figure>…</figure> OR leading <p><img…/></p> if we show a featured image above */
-function stripLeadingFigureOrImage(html = "") {
-  let out = String(html);
+/* ------------------------------ body helpers ------------------------------- */
+function extractFirstFigure(html = "") {
+  const res = { imgSrc: null, figureHtml: "", strippedHtml: html || "" };
+  if (!html) return res;
+  const figMatch = html.match(/<figure[\s\S]*?<\/figure>/i);
+  if (!figMatch) return res;
 
-  out = out.replace(/^\s*<figure[\s\S]*?<\/figure>\s*/i, "");
-  out = out.replace(
-    /^\s*<p>\s*(?:<a[^>]*>\s*)?<img\b[\s\S]*?\/>(?:\s*<\/a>)?(?:\s*<br\s*\/?>\s*)?\s*<\/p>\s*/i,
-    ""
-  );
+  const figureHtml = figMatch[0];
+  res.figureHtml = figureHtml;
 
-  return out;
+  const imgMatch = figureHtml.match(/<img[^>]*\bsrc=["']([^"']+)["'][^>]*>/i);
+  if (imgMatch) res.imgSrc = imgMatch[1];
+
+  res.strippedHtml = html.replace(figureHtml, "").trim();
+  return res;
 }
 
-/**
- * Final sanitize for display:
- * - remove <script>
- * - optionally drop leading figure/img
- * - normalize NBSP variants to a single entity form (&#160;) for hydration stability
- */
-function sanitizeBodyForDisplay(html = "", { dropFirstFigure = false } = {}) {
-  let out = String(html).replace(/<script[\s\S]*?<\/script>/gi, "");
-  if (dropFirstFigure) {
-    out = stripLeadingFigureOrImage(out);
-  }
-  // IMPORTANT: force deterministic &nbsp; representation
-  out = normalizeNbspToEntity(out);
-  return out;
+function normalizeForDisplay(html = "") {
+  return normalizeNbspToEntity(String(html));
 }
 
 /* ------------------------- matching logic (exact hit) ------------------------ */
@@ -174,15 +168,22 @@ export default async function PostPage({ params }) {
     );
   }
 
-  /* ----------------------------- derived fields ----------------------------- */
   const title = pick(post, ["title", "headline"]) || "Untitled";
   const featured =
     pick(post, ["featured_image_url", "featured_image", "image", "photo", "og_image"]) || null;
 
-  // Sanitize body; if we have a featured image above, drop the first figure/img from the body
   const rawBody =
     pick(post, ["body", "content", "html", "article_html", "body_html", "content_html"]) || "";
-  const bodyHtml = sanitizeBodyForDisplay(rawBody, { dropFirstFigure: Boolean(featured) });
+
+  const firstFig = extractFirstFigure(rawBody);
+  const heroSrc = featured || firstFig.imgSrc || null;
+
+  const bodyWithoutDup =
+    heroSrc && firstFig.imgSrc && heroSrc === firstFig.imgSrc
+      ? firstFig.strippedHtml
+      : rawBody;
+
+  const bodyHtml = normalizeForDisplay(bodyWithoutDup);
 
   const rawCats = pick(post, ["categories", "category", "tags"]) || [];
   const cats = Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [];
@@ -204,19 +205,14 @@ export default async function PostPage({ params }) {
   if (bodyHtml) metaPieces.push(readingTime(bodyHtml));
   const metaLineHtml = metaPieces.join(" • ");
 
-  /* ---------------------------------- view ---------------------------------- */
   return (
     <main className="mx-auto w-full max-w-4xl px-4">
-      {/* Breadcrumbs */}
+      <TwitterEmbeds />
+
       <nav aria-label="Breadcrumb" className="not-prose pt-6">
         <ol className="flex items-center gap-2 text-sm">
           <li>
-            <a
-              href="/"
-              className="!text-sky-700 hover:!text-sky-800 hover:underline"
-            >
-              Home
-            </a>
+            <a href="/" className="!text-sky-700 hover:!text-sky-800 hover:underline">Home</a>
           </li>
 
           {catName ? (
@@ -235,33 +231,26 @@ export default async function PostPage({ params }) {
         </ol>
       </nav>
 
-      {/* Title */}
       <h1 className="mt-3 text-3xl font-extrabold tracking-tight text-black">{title}</h1>
 
-      {/* Meta line */}
       {metaLineHtml ? (
         <div
           className="mt-2 text-sm text-neutral-600 not-prose"
-          // meta contains locale/date—won’t differ often, but be safe:
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: metaLineHtml }}
         />
       ) : null}
 
-      {/* Featured — one image, **no rounded corners** */}
-      {featured ? (
+      {heroSrc ? (
         <div className="mt-6">
-          <img src={featured} alt={title} className="w-full h-auto /* no rounded */" />
+          <img src={heroSrc} alt={title} className="w-full h-auto /* no rounded */" />
         </div>
       ) : null}
 
-      {/* Body with nice paragraph spacing */}
-      <article
-        className="prose prose-neutral max-w-none mt-8 prose-p:my-5 prose-img:rounded-none"
-        // 🔒 Prevent hydration warnings if the CMS sneaks in NBSP variations, etc.
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: bodyHtml }}
-      />
+      {/* Apply .article-body so our global margins always win */}
+      <article className="article-body prose prose-neutral max-w-none mt-8 prose-img:rounded-none">
+        <ScriptedHtml html={bodyHtml} suppressHydrationWarning />
+      </article>
 
       <ShareRow className="mt-10" />
     </main>

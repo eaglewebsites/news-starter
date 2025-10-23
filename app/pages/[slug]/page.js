@@ -1,7 +1,7 @@
 // app/pages/[slug]/page.js
 import { notFound } from "next/navigation";
 import { fetchPageBySlug } from "@/lib/api/pages";
-import ArticleBody from "@/components/ArticleBody";
+import ScriptedHtml from "@/components/ScriptedHtml"; // 👈 use our script-friendly renderer
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +36,6 @@ function escapeReg(s) {
 
 /** Extract the FIRST <figure>…</figure> from HTML.
  * Returns { imgSrc, captionHtml, figureHtml, strippedHtml }.
- * - imgSrc: src from the first <img> inside that figure (if any)
- * - captionHtml: inner HTML of <figcaption> (if any)
- * - figureHtml: the entire matched figure block
- * - strippedHtml: original HTML with that first figure removed
  */
 function extractFirstFigure(html = "") {
   const res = { imgSrc: null, captionHtml: "", figureHtml: "", strippedHtml: html || "" };
@@ -140,7 +136,13 @@ export default async function CmsPage({ params }) {
         </figure>
       )}
 
-      <ArticleBody html={bodyOut} />
+      {/* Render CMS HTML and allow safe external scripts (ScoreStream, Twitter/X, YouTube, etc.) */}
+      <ScriptedHtml
+        className="prose prose-neutral max-w-none mt-8 prose-p:my-5 prose-img:rounded-none"
+        html={bodyOut}
+        allowScripts
+      />
+
       <div className="pb-24" />
     </article>
   );
