@@ -62,21 +62,49 @@ function readingTime(html) {
   return `${mins} min read`;
 }
 
-/* ------------------------------ body helpers ------------------------------- */
-function extractFirstFigure(html = "") {
-  const res = { imgSrc: null, figureHtml: "", strippedHtml: html || "" };
-  if (!html) return res;
-  const figMatch = html.match(/<figure[\s\S]*?<\/figure>/i);
-  if (!figMatch) return res;
+/* ------------------------------ image helpers ------------------------------ */
+/** Return filename (lowercased) without common WP/CMS size/crop suffixes and without query/hash */
+function filenameStem(u = "") {
+  try {
+    let s = String(u || "").trim();
+    if (!s) return "";
+    s = s.split("#")[0].split("?")[0]; // drop query/hash
+    const lastSlash = s.lastIndexOf("/");
+    let file = (lastSlash >= 0 ? s.slice(lastSlash + 1) : s).toLowerCase();
+    try { file = decodeURIComponent(file); } catch {}
+    file = file.replace(
+      /-(?:\d{2,4}x\d{2,4}|scaled|rotated|edited|e\d{2,3}|crop)(?=\.(?:jpe?g|png|webp|gif|avif)\b)/g,
+      ""
+    );
+    return file;
+  } catch {
+    return String(u || "").toLowerCase();
+  }
+}
+function urlsLikelySame(a, b) {
+  if (!a || !b) return false;
+  return filenameStem(a) === filenameStem(b);
+}
 
-  const figureHtml = figMatch[0];
-  res.figureHtml = figureHtml;
+/* --------------------------- media extraction utils ------------------------- */
+/** Find the FIRST <figure>…</figure> anywhere; return { imgSrc, start, end, html } */
+function findFirstFigure(html = "") {
+  const m = html.match(/<figure[\s\S]*?<\/figure>/i);
+  if (!m) return null;
+  const htmlFrag = m[0];
+  const start = html.indexOf(htmlFrag);
+  const end = start + htmlFrag.length;
+  const imgM = htmlFrag.match(/<img[^>]*\bsrc=["']([^"']+)["'][^>]*>/i);
+  return { imgSrc: imgM ? imgM[1] : null, start, end, html: htmlFrag };
+}
 
-  const imgMatch = figureHtml.match(/<img[^>]*\bsrc=["']([^"']+)["'][^>]*>/i);
-  if (imgMatch) res.imgSrc = imgMatch[1];
-
-  res.strippedHtml = html.replace(figureHtml, "").trim();
-  return res;
+/** Find a leading <p>(<a>)?<img…/></p> at the very top; return { imgSrc, html } */
+function findLeadingParaImg(html = "") {
+  const m = html.match(
+    /^\s*<p>\s*(?:<a[^>]*>\s*)?<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*\/?>\s*(?:<\/a>)?\s*(?:<br\s*\/?>\s*)?\s*<\/p>/i
+  );
+  if (!m) return null;
+  return { imgSrc: m[1] || null, html: m[0] };
 }
 
 function normalizeForDisplay(html = "") {
@@ -145,7 +173,7 @@ async function fetchPostByIdOrSlug(idOrSlug, siteKey = "") {
 export const dynamic = "force-dynamic";
 
 /* --------------------------------- page --------------------------------- */
-export default async function PostPage({ params }) {
+export default async function PostPage({ params, searchParams }) {
   const resolved = await params;
   const idOrSlug = resolved?.id;
 
@@ -175,15 +203,33 @@ export default async function PostPage({ params }) {
   const rawBody =
     pick(post, ["body", "content", "html", "article_html", "body_html", "content_html"]) || "";
 
-  const firstFig = extractFirstFigure(rawBody);
-  const heroSrc = featured || firstFig.imgSrc || null;
+  // Probe for early media variants
+  const leadPara = findLeadingParaImg(rawBody);
+  const firstFig = findFirstFigure(rawBody);
 
-  const bodyWithoutDup =
-    heroSrc && firstFig.imgSrc && heroSrc === firstFig.imgSrc
-      ? firstFig.strippedHtml
-      : rawBody;
+  // Choose hero: prefer explicit featured; else first paragraph image; else first figure image
+  const heroSrc = featured || leadPara?.imgSrc || firstFig?.imgSrc || null;
 
-  const bodyHtml = normalizeForDisplay(bodyWithoutDup);
+  // Remove body media block if it's the same as hero (fuzzy compare by filename)
+  // OR if it's a near-top figure (even if URL differs), to avoid double-leading art.
+  let bodyNoDup = rawBody;
+  let removalReason = "(none)";
+
+  if (heroSrc) {
+    if (leadPara?.imgSrc && urlsLikelySame(heroSrc, leadPara.imgSrc)) {
+      bodyNoDup = bodyNoDup.replace(leadPara.html, "").trim();
+      removalReason = "removed leading <p><img> (matched hero)";
+    } else if (firstFig?.imgSrc && urlsLikelySame(heroSrc, firstFig.imgSrc) && firstFig.html) {
+      bodyNoDup = bodyNoDup.slice(0, firstFig.start) + bodyNoDup.slice(firstFig.end);
+      removalReason = "removed first <figure> (matched hero)";
+    } else if (firstFig && typeof firstFig.start === "number" && firstFig.start < 800) {
+      // NEW RULE: if a figure is very near the top and we already show a hero, strip it even if URLs differ
+      bodyNoDup = bodyNoDup.slice(0, firstFig.start) + bodyNoDup.slice(firstFig.end);
+      removalReason = "removed first <figure> (near-top fallback)";
+    }
+  }
+
+  const bodyHtml = normalizeForDisplay(bodyNoDup);
 
   const rawCats = pick(post, ["categories", "category", "tags"]) || [];
   const cats = Array.isArray(rawCats) ? rawCats : rawCats ? [rawCats] : [];
@@ -204,6 +250,9 @@ export default async function PostPage({ params }) {
   if (published) metaPieces.push(fmtDateTime(published));
   if (bodyHtml) metaPieces.push(readingTime(bodyHtml));
   const metaLineHtml = metaPieces.join(" • ");
+
+  // Toggle with ?debug=1
+  const debugOn = String(searchParams?.debug || "").toLowerCase() === "1";
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4">
@@ -241,15 +290,29 @@ export default async function PostPage({ params }) {
         />
       ) : null}
 
+      {/* Optional debug panel — visit page with ?debug=1 to show */}
+      {debugOn && (
+        <pre className="mt-3 whitespace-pre-wrap text-xs bg-yellow-50 border border-yellow-300 rounded p-3 text-black">
+          HERO: {heroSrc || "(none)"}{"\n"}
+          FEATURED: {featured || "(none)"}{"\n"}
+          FIRST_FIG_IMG: {firstFig?.imgSrc || "(none)"}{"\n"}
+          LEADING_P_IMG: {leadPara?.imgSrc || "(none)"}{"\n"}
+          HERO_STEM: {filenameStem(heroSrc) || "(n/a)"}{"\n"}
+          FIG_STEM: {filenameStem(firstFig?.imgSrc) || "(n/a)"}{"\n"}
+          REMOVED: {removalReason}
+        </pre>
+      )}
+
       {heroSrc ? (
         <div className="mt-6">
+          {/* no rounded corners for hero */}
           <img src={heroSrc} alt={title} className="w-full h-auto /* no rounded */" />
         </div>
       ) : null}
 
-      {/* Apply .article-body so our global margins always win */}
+      {/* Apply .article-body so global CSS handles paragraph/list spacing */}
       <article className="article-body prose prose-neutral max-w-none mt-8 prose-img:rounded-none">
-        <ScriptedHtml html={bodyHtml} suppressHydrationWarning />
+        <ScriptedHtml html={normalizeNbspToEntity(bodyHtml)} suppressHydrationWarning />
       </article>
 
       <ShareRow className="mt-10" />
