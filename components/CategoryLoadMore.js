@@ -4,8 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSiteKeySync } from "@/lib/site-detection-client";
 
-/* ------------------------------ small helpers ------------------------------ */
-
+/* ------------------------------ helpers ------------------------------ */
 function root(obj) {
   return obj && typeof obj === "object" && obj.data && typeof obj.data === "object" ? obj.data : obj;
 }
@@ -17,22 +16,16 @@ function pick(obj, paths = []) {
   }
   return undefined;
 }
-
-/** Normalize &nbsp; variants and scrub stray "/>" artifacts in plain text snippets */
 function sanitizeSnippet(s = "") {
   let out = String(s)
     .replace(/&amp;nbsp;/gi, " ")
     .replace(/&(?:nbsp|#160);/gi, " ")
     .replace(/\u00a0/g, " ");
-  // remove stray "/>" or similar
   out = out.replace(/(^|[^<])\/>/g, "$1");
-  // remove a few common symbol “bullets” that sneak in from broken markup
   out = out.replace(/^[\s"“”‘’'(){}\[\]<>«»‹›▪•▶▸►›]+/u, "");
-  // collapse repeating spaces
   out = out.replace(/[ \t]{2,}/g, " ").trim();
   return out;
 }
-
 function stripHtmlToText(html = "") {
   return sanitizeSnippet(
     String(html)
@@ -43,45 +36,23 @@ function stripHtmlToText(html = "") {
     .replace(/\s+/g, " ")
     .trim();
 }
-
-function escapeRegExp(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/**
- * Remove one or more leading repetitions of the title from the snippet,
- * even with quotes/symbols/dashes in between. Then trim any dangling quotes/symbols.
- */
+function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function stripLeadingTitle(text, title) {
-  if (!text || !title) return text;
+  if (!text || !title) return sanitizeSnippet(text);
   let out = text.trimStart();
   const esc = escapeRegExp(String(title).trim());
-
-  // optional whitespace/punct/symbols, then the title, then a boundary
   const reOne = new RegExp(String.raw`^[\s\p{P}\p{S}]*${esc}(?:(?=[\s\p{P}\p{S}])|$)`, "iu");
-
   for (let i = 0; i < 4; i++) {
     const next = out.replace(reOne, "").trimStart();
     if (next === out) break;
     out = next;
   }
-
-  // After removing titles, clear leftover leading quotes/symbols/dashes and stray '>'s
   out = out.replace(/^[\s"“”‘’'(){}\[\]<>«»‹›:;.,\-–—/\\|•▪▶▸►›>]+/u, "").trimStart();
-
-  return out;
+  return sanitizeSnippet(out);
 }
+function stripFigcaptions(html = "") { return String(html).replace(/<figcaption[\s\S]*?<\/figcaption>/gi, " "); }
+function stripFigures(html = "") { return String(html).replace(/<figure[\s\S]*?<\/figure>/gi, " "); }
 
-/** Remove all <figcaption>…</figcaption> blocks */
-function stripFigcaptions(html = "") {
-  return String(html).replace(/<figcaption[\s\S]*?<\/figcaption>/gi, " ");
-}
-/** Remove entire <figure>…</figure> blocks (img + caption) */
-function stripFigures(html = "") {
-  return String(html).replace(/<figure[\s\S]*?<\/figure>/gi, " ");
-}
-
-/** Build a snippet from various fields, trim, sanitize; obits strip figure/captions first. */
 function makeSnippet(p, maxLen = 240, titleForStrip = "", isObits = false) {
   let raw =
     p.snippet ?? p._snippet ?? p.excerpt ?? p.dek ?? p.summary ?? p.description ?? p.teaser ??
@@ -104,45 +75,26 @@ function makeSnippet(p, maxLen = 240, titleForStrip = "", isObits = false) {
   return cut.replace(/\s+\S*$/, "") + "…";
 }
 
-/** Build the internal app href. Prefer ID; fall back to slug/derived/title. Never append ?orig. */
 function internalHrefForApp(p) {
   const id = p.id || p.post_id || p.uuid || p.guid;
   if (id) return `/posts/${encodeURIComponent(String(id))}`;
-
   const slug = p.slug || p.post_slug || p.seo_slug || "";
   if (slug) return `/posts/${encodeURIComponent(String(slug))}`;
-
   const derived = deriveSlugFromLinks(p);
   if (derived) return `/posts/${encodeURIComponent(derived)}`;
-
   const titleSlug = slugifyTitle(p.title || p.post_title);
   if (titleSlug) return `/posts/${encodeURIComponent(titleSlug)}`;
-
   return "#";
 }
-
-function deriveHref(post) {
-  return post.href || internalHrefForApp(post);
-}
-
+function deriveHref(post) { return post.href || internalHrefForApp(post); }
 function deriveImage(post) {
   return (
     pick(post, [
-      "featured_image_url",
-      "featured_image",
-      "featuredImage",
-      "image_url",
-      "image",
-      "featured_image_thumbnail",
-      "thumbnail",
-      "thumb",
-      "media.0.url",
-      "photo",
-      "og_image",
+      "featured_image_url","featured_image","featuredImage","image_url","image",
+      "featured_image_thumbnail","thumbnail","thumb","media.0.url","photo","og_image",
     ]) || null
   );
 }
-
 function toDate(val) { try { const d = new Date(val); return isNaN(d.getTime()) ? null : d; } catch { return null; } }
 function timeAgo(dateish) {
   const d = toDate(dateish);
@@ -155,10 +107,8 @@ function timeAgo(dateish) {
   const days = Math.round(hours / 24);
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
-
 function deriveSlugFromLinks(p) {
-  const link =
-    p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
+  const link = p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
   if (typeof link !== "string" || !link) return "";
   try {
     const u = new URL(link);
@@ -183,7 +133,6 @@ function deriveSlugFromLinks(p) {
   }
   return "";
 }
-
 function slugifyTitle(title) {
   if (!title) return "";
   return String(title)
@@ -195,14 +144,12 @@ function slugifyTitle(title) {
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
 }
-
 function stableId(p) {
   const id = p.id || p.post_id || p.uuid || p.guid;
   if (id) return String(id);
   const slug = p.slug || p.post_slug || p.seo_slug;
   if (slug) return String(slug);
-  const href =
-    p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
+  const href = p.href || p.url || p.link || p.permalink || p.web_url || p.webUrl || p.perma_link || "";
   if (href) {
     try {
       const u = new URL(href, "https://example.com");
@@ -213,13 +160,10 @@ function stableId(p) {
   }
   return p.title || p.post_title || "untitled";
 }
-
-/** Normalize one API item into the row shape we render. */
 function normalizePostInternal(p, siteKey, isObits) {
   const href = internalHrefForApp(p);
   const titleForStrip = p.title ?? p.post_title ?? "";
   const snippet = makeSnippet(p, 240, titleForStrip, isObits);
-
   return {
     id: stableId(p),
     href,
@@ -229,7 +173,6 @@ function normalizePostInternal(p, siteKey, isObits) {
     _snippet: snippet,
   };
 }
-
 function arrayFromApi(data) {
   if (Array.isArray(data)) return data;
   if (!data || typeof data !== "object") return [];
@@ -240,25 +183,39 @@ function arrayFromApi(data) {
   if (data.data && Array.isArray(data.data)) return data.data;
   return [];
 }
+function capitalize(s) { return (s ?? "").slice(0, 1).toUpperCase() + (s ?? "").slice(1); }
 
-function capitalize(s) {
-  return (s ?? "").slice(0, 1).toUpperCase() + (s ?? "").slice(1);
+/* ----------------------------- inline ad block ----------------------------- */
+/** Optional CLS-safe in-feed ad box (mobile 300x250, desktop 728x90). */
+function InlineInFeedAd({ id }) {
+  return (
+    <li className="py-6">
+      <div id={id} data-slot="infeed" className="w-full flex items-center justify-center">
+        <div className="block lg:hidden h-[250px] w-[300px] bg-neutral-200 text-neutral-700 flex items-center justify-center">
+          AD IN-FEED
+        </div>
+        <div className="hidden lg:flex h-[90px] w-[728px] bg-neutral-200 text-neutral-700 items-center justify-center">
+          AD IN-FEED
+        </div>
+      </div>
+    </li>
+  );
 }
 
 /* -------------------------------- component -------------------------------- */
-
 export default function CategoryLoadMore({
   slug,
-  siteKey,                 // optional; if omitted we detect on the client
+  siteKey,                 // optional; falls back to client detection
   initialOffset = 0,
-  initialIds = [],         // optional
+  initialIds = [],
   pageSize = 24,
-  /** Pass the SSR items so dedupe knows what's already on screen */
   seedFromItems = [],
-  /** Match StoryListWithAds props used for thumbnails */
   noCropImages,
   thumbClass,
   focusUnderline = true,
+
+  /** Insert an in-feed ad after every N items (0 = disabled) */
+  inlineAdEvery = 0,
 }) {
   const [items, setItems] = useState([]);
   const [offset, setOffset] = useState(initialOffset);
@@ -269,9 +226,7 @@ export default function CategoryLoadMore({
   const seenRef = useRef(new Set(initialIds));
   const lastSigRef = useRef("");
 
-  // If no prop was provided, detect on the client
   const siteKeyLocal = siteKey || getSiteKeySync();
-
   const isObits = useMemo(() => (slug || "").toLowerCase().includes("obit"), [slug]);
   const forceNoCrop = noCropImages ?? isObits;
 
@@ -280,7 +235,7 @@ export default function CategoryLoadMore({
     []
   );
 
-  // Seed dedupe with what’s already rendered above
+  // Seed the dedupe set with SSR items already on the page above us
   useEffect(() => {
     try {
       for (const raw of seedFromItems) {
@@ -292,13 +247,12 @@ export default function CategoryLoadMore({
 
   function pageSignature(list) {
     if (!list || !list.length) return "";
-    const first = stableId(list[0]) || "";
-    const last = stableId(list[list.length - 1]) || "";
+    const first = list[0]?.id || "";
+    const last = list[list.length - 1]?.id || "";
     return `${first}__${last}__${list.length}`;
   }
 
   async function fetchVariant(nextOffset, variant) {
-    // variant: "offset" | "page"
     let url;
     if (variant === "page") {
       const page = Math.floor(nextOffset / pageSize) + 1;
@@ -329,10 +283,7 @@ export default function CategoryLoadMore({
 
   async function handleLoadMore() {
     if (loading || !hasMore) return;
-    if (!BASE) {
-      setError("Public API base is not configured.");
-      return;
-    }
+    if (!BASE) { setError("Public API base is not configured."); return; }
 
     setLoading(true);
     setError("");
@@ -347,18 +298,11 @@ export default function CategoryLoadMore({
 
         for (const variant of variants) {
           let arr = [];
-          try {
-            arr = await fetchVariant(nextOffset, variant);
-          } catch {
-            continue;
-          }
+          try { arr = await fetchVariant(nextOffset, variant); } catch { continue; }
 
           const normalized = arr.map((p) => normalizePostInternal(p, siteKeyLocal, isObits));
           const sig = pageSignature(normalized);
-
-          if (sig && sig === lastSigRef.current) {
-            continue;
-          }
+          if (sig && sig === lastSigRef.current) continue;
 
           const unseen = normalized.filter((p) => {
             const id = p.id || p.href || p.title;
@@ -386,95 +330,118 @@ export default function CategoryLoadMore({
 
       setOffset(nextOffset);
       if (appended === 0) setHasMore(false);
-    } catch (e) {
+    } catch {
       setError("Sorry, couldn’t load more stories.");
     } finally {
       setLoading(false);
     }
   }
 
-  /* ---------------------------------- view ---------------------------------- */
+  // Title link — force black; underline only on hover; keep focus-visible underline
+  const titleLinkClasses = [
+    "outline-none",
+    "!text-black visited:!text-black hover:!text-black",
+    "!no-underline hover:!underline underline-offset-2",
+    focusUnderline ? "focus-visible:!underline" : "",
+  ].join(" ").trim();
+
+  const thumbBoxDefault =
+    "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]";
+  const thumbBox = thumbClass || thumbBoxDefault;
+
+  // Build list with optional in-feed ads
+  function renderListWithAds(list) {
+    const out = [];
+    let adCount = 0;
+
+    list.forEach((post, idx) => {
+      const href = deriveHref(post);
+      const img = deriveImage(post);
+      const title = pick(root(post), ["title", "headline"]) || "Untitled";
+      const updated =
+        pick(root(post), ["updated","updated_at","modified","published","date","published_at"]) || null;
+
+      const snippet = sanitizeSnippet(post._snippet || "");
+      const alt = `${(isObits ? "Obituary: " : "")}${title}`;
+
+      out.push(
+        <li key={(post.id || post.slug || href || idx) + "::more-row"} className="py-4">
+          <div className="flex items-start gap-4 md:gap-5">
+            {/* thumbnail (linked) */}
+            {forceNoCrop ? (
+              <div className={thumbBox}>
+                {img ? (
+                  <a href={href} className="block !text-inherit !no-underline">
+                    <img
+                      src={img}
+                      alt={alt}
+                      className="block max-w-full max-h-full w-auto h-auto object-contain"
+                      loading="lazy"
+                    />
+                  </a>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
+                    No image
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={thumbBox}>
+                {img ? (
+                  <a href={href} className="block !text-inherit !no-underline">
+                    <img
+                      src={img}
+                      alt={alt}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </a>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
+                    No image
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* text column */}
+            <div className="min-w-0 flex-1">
+              <h3 className="font-bold text-[20px] leading-[1]">
+                <a href={href} className={titleLinkClasses}>
+                  {title}
+                </a>
+              </h3>
+
+              <div className="mt-1 text-[13px] leading-[1] font-light text-neutral-500">
+                {updated ? `Updated ${timeAgo(updated)}` : ""}
+              </div>
+
+              {snippet ? (
+                <p className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3" title={snippet}>
+                  {snippet}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </li>
+      );
+
+      // Optional in-feed ad insertion
+      if (inlineAdEvery > 0 && (idx + 1) % inlineAdEvery === 0) {
+        adCount += 1;
+        out.push(<InlineInFeedAd key={`infeed-${adCount}`} id={`infeed-${adCount}`} />);
+      }
+    });
+
+    return out;
+  }
 
   return (
+    // IMPORTANT: no container/grid here — we inherit page layout and widths.
     <div className="mt-6">
       {items.length > 0 && (
         <ul className="divide-y divide-neutral-200">
-          {items.map((post, idx) => {
-            const href = deriveHref(post);
-            const img = deriveImage(post);
-            const title = pick(post, ["title", "headline"]) || "Untitled";
-            const updated =
-              pick(post, ["updated", "updated_at", "modified", "published", "date", "published_at"]) || null;
-
-            const snippet = sanitizeSnippet(post._snippet || "");
-
-            const alt = `${(isObits ? "Obituary: " : "")}${title}`;
-
-            return (
-              <li key={(post.id || post.slug || href || idx) + "::more-row"} className="py-4">
-                <a href={href} className="group flex items-start gap-4 md:gap-5 outline-none">
-                  {/* Thumbnail (contain for obits; cover otherwise) */}
-                  {isObits ? (
-                    <div className={thumbClass || "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]"}>
-                      {img ? (
-                        <img
-                          src={img}
-                          alt={alt}
-                          className="block max-w-full max-h-full w-auto h-auto object-contain"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
-                          No image
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className={thumbClass || "relative overflow-hidden bg-black shrink-0 w-[160px] h-[100px] md:w-[220px] md:h-[130px]"}>
-                      {img ? (
-                        <img
-                          src={img}
-                          alt={alt}
-                          className="absolute inset-0 h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
-                          No image
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="min-w-0 flex-1">
-                    <h3
-                      className={[
-                        "font-bold text-[20px] leading-[1] text-black",
-                        "group-hover:underline",
-                        focusUnderline ? "group-focus-visible:underline" : "",
-                      ].join(" ").trim()}
-                    >
-                      {title}
-                    </h3>
-
-                    <div className="mt-1 text-[13px] leading-[1] font-light text-neutral-500">
-                      {updated ? `Updated ${timeAgo(updated)}` : ""}
-                    </div>
-
-                    {snippet ? (
-                      <p
-                        className="mt-2 text-[16px] leading-[1.5] font-normal text-neutral-800 line-clamp-3"
-                        data-snipsrc="client"
-                        title={snippet}
-                      >
-                        {snippet}
-                      </p>
-                    ) : null}
-                  </div>
-                </a>
-              </li>
-            );
-          })}
+          {renderListWithAds(items)}
         </ul>
       )}
 
