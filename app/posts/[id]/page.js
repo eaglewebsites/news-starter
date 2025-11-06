@@ -2,6 +2,7 @@
 import ShareRow from "@/components/ShareRow";
 import TwitterEmbeds from "@/components/TwitterEmbeds"; // upgrades <blockquote class="twitter-tweet">…
 import ScriptedHtml from "@/components/ScriptedHtml";   // runs allow-listed <script> tags
+import RightRailAds from "@/components/RightRailAds";
 import { getApiBase, NO_STORE } from "@/lib/api-base";
 import { getCurrentSiteKey } from "@/lib/site-detection-server";
 
@@ -63,11 +64,12 @@ function readingTime(html) {
 }
 
 /* ------------------------------ image helpers ------------------------------ */
+/** Return filename (lowercased) without common WP/CMS size/crop suffixes and without query/hash */
 function filenameStem(u = "") {
   try {
     let s = String(u || "").trim();
     if (!s) return "";
-    s = s.split("#")[0].split("?")[0];
+    s = s.split("#")[0].split("?")[0]; // drop query/hash
     const lastSlash = s.lastIndexOf("/");
     let file = (lastSlash >= 0 ? s.slice(lastSlash + 1) : s).toLowerCase();
     try { file = decodeURIComponent(file); } catch {}
@@ -82,7 +84,6 @@ function filenameStem(u = "") {
 }
 
 /* --------------------------- media extraction utils ------------------------- */
-/** Find the FIRST <figure>…</figure> anywhere; return { imgSrc, start, end, html } */
 function findFirstFigure(html = "") {
   const m = html.match(/<figure[\s\S]*?<\/figure>/i);
   if (!m) return null;
@@ -92,8 +93,6 @@ function findFirstFigure(html = "") {
   const imgM = htmlFrag.match(/<img[^>]*\bsrc=["']([^"']+)["'][^>]*>/i);
   return { imgSrc: imgM ? imgM[1] : null, start, end, html: htmlFrag };
 }
-
-/** Find a leading <p>(<a>)?<img…/></p> at the very top; return { imgSrc, html } */
 function findLeadingParaImg(html = "") {
   const m = html.match(
     /^\s*<p>\s*(?:<a[^>]*>\s*)?<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*\/?>\s*(?:<\/a>)?\s*(?:<br\s*\/?>\s*)?\s*<\/p>/i
@@ -101,7 +100,6 @@ function findLeadingParaImg(html = "") {
   if (!m) return null;
   return { imgSrc: m[1] || null, html: m[0] };
 }
-
 function normalizeForDisplay(html = "") {
   return normalizeNbspToEntity(String(html));
 }
@@ -169,7 +167,7 @@ export const dynamic = "force-dynamic";
 
 /* --------------------------------- page --------------------------------- */
 export default async function PostPage({ params, searchParams }) {
-  // Next.js 15: params/searchParams are Promises — await them before use
+  // Next.js 15: params/searchParams are Promises — await before use
   const { id: idOrSlug } = await params;
 
   const siteKey = (await getCurrentSiteKey()) || "";
@@ -192,25 +190,18 @@ export default async function PostPage({ params, searchParams }) {
   }
 
   const title = pick(post, ["title", "headline"]) || "Untitled";
-
   const rawBody =
     pick(post, ["body", "content", "html", "article_html", "body_html", "content_html"]) || "";
 
-  // Compute for debug; hero ONLY uses the first <figure> image:
-  const leadPara = findLeadingParaImg(rawBody); // ignored for hero, still available in debug
-  const firstFig = findFirstFigure(rawBody);
-
   // Only use FIRST <figure> image as the hero
+  const firstFig = findFirstFigure(rawBody);
   const heroSrc = firstFig?.imgSrc || null;
 
   // Remove that FIRST <figure> from the body to avoid duplication
   let bodyNoDup = rawBody;
-  let removalReason = "(none)";
   if (firstFig?.html && typeof firstFig.start === "number" && typeof firstFig.end === "number") {
     bodyNoDup = bodyNoDup.slice(0, firstFig.start) + bodyNoDup.slice(firstFig.end);
-    removalReason = "removed first <figure> (used as hero)";
   }
-
   const bodyHtml = normalizeForDisplay(bodyNoDup);
 
   const rawCats = pick(post, ["categories", "category", "tags"]) || [];
@@ -233,15 +224,30 @@ export default async function PostPage({ params, searchParams }) {
   if (bodyHtml) metaPieces.push(readingTime(bodyHtml));
   const metaLineHtml = metaPieces.join(" • ");
 
-  // Await searchParams before use (Next 15)
+  // Detect obituary category
+  const isObit = /obit/i.test(String(catName || ""));
+
+  // Await searchParams (Next 15) — debug flag optional
   const sp = await searchParams;
   const rawDebug = typeof sp?.get === "function" ? sp.get("debug") : sp?.debug;
   const debugOn = String(Array.isArray(rawDebug) ? rawDebug[0] : rawDebug || "")
     .toLowerCase() === "1";
 
+  // Inline image sizing classes (only for obits)
+  const articleClass = [
+    "article-body",
+    "prose",
+    "prose-neutral",
+    "max-w-none",
+    "mt-8",
+    "prose-img:rounded-none",
+    isObit ? "prose-img:mx-auto" : "",
+    isObit ? "prose-img:w-full" : "",
+    isObit ? "sm:prose-img:w-full" : "",
+    isObit ? "md:prose-img:w-1/2" : "",
+  ].filter(Boolean).join(" ");
+
   /* ----------------------------- layout with rail ----------------------------- */
-  // Matches StoryListWithAds: 1fr content + 320px rail, rail hidden on mobile.
-  // Rail uses the same placeholder boxes (300x250) and spacing classes.
   return (
     <main className="mx-auto w-full max-w-7xl px-4">
       <TwitterEmbeds />
@@ -278,16 +284,23 @@ export default async function PostPage({ params, searchParams }) {
         />
       ) : null}
 
+      {/* GRID: [content | right rail] */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         {/* LEFT: story content */}
         <div>
           {heroSrc ? (
             <div className="mt-0">
-              <img src={heroSrc} alt={title} className="w-full h-auto /* no rounded */" />
+              {/* Conditionally narrower hero for obituaries */}
+              <img
+                src={heroSrc}
+                alt={title}
+                className={isObit ? "mx-auto w-full sm:w-full md:w-1/2" : "w-full h-auto /* no rounded */"}
+              />
             </div>
           ) : null}
 
-          <article className="article-body prose prose-neutral max-w-none mt-8 prose-img:rounded-none">
+          {/* Inline images narrowed for obits via prose-img:* classes */}
+          <article className={articleClass}>
             <ScriptedHtml html={normalizeNbspToEntity(bodyHtml)} suppressHydrationWarning />
           </article>
 
@@ -295,26 +308,27 @@ export default async function PostPage({ params, searchParams }) {
 
           {debugOn && (
             <pre className="mt-6 whitespace-pre-wrap text-xs bg-yellow-50 border border-yellow-300 rounded p-3 text-black">
-              HERO (first &lt;figure&gt; img): {heroSrc || "(none)"}{"\n"}
               FIRST_FIG_IMG: {firstFig?.imgSrc || "(none)"}{"\n"}
-              LEADING_P_IMG (ignored for hero): {leadPara?.imgSrc || "(none)"}{"\n"}
-              REMOVED: {removalReason}
+              CATEGORY: {catName || "(none)"}{"\n"}
+              OBITS_MODE: {isObit ? "YES" : "NO"}
             </pre>
           )}
         </div>
 
-        {/* RIGHT: vertical ad rail — IDENTICAL placeholder markup to StoryListWithAds */}
+        {/* RIGHT: shared rail (non-sticky, desktop only) */}
         <aside className="hidden lg:block">
-          <div className="flex flex-col gap-8">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex h-[250px] w-[300px] items-center justify-center bg-neutral-200 text-neutral-700"
-              >
-                AD HERE
-              </div>
-            ))}
-          </div>
+          <RightRailAds
+            pageType="post"
+            siteKey={siteKey}
+            slotIds={[
+              "gam-rr-top",
+              "taboola-right-rail-1",
+              "gam-rr-mid",
+              "taboola-right-rail-2",
+              "gam-rr-bottom",
+              "gam-rr-extra",
+            ]}
+          />
         </aside>
       </div>
     </main>
